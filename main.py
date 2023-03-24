@@ -65,7 +65,7 @@ async def generate_image(ctx, *, prompt):
         if not hasattr(bot, "image_generation_task") or bot.image_generation_task.done():
             bot.image_generation_task = bot.loop.create_task(generate_image_from_queue())
     except Exception as e:
-        await ctx.send(f'Error generating image: {e}')
+        await ctx.send(f'Error generating image: {e}\n\nStack trace:\n{traceback.format_exc()}')
 
 # New function to process the prompts in the queue and generate images one at a time
 async def generate_image_from_queue():
@@ -139,7 +139,7 @@ async def list_models(ctx):
         models_text = "Available models:\n" + "\n".join(models)
         await send_large_message(ctx, models_text)
     except Exception as e:
-        await ctx.send(f'Error retrieving models: {e}')
+        await ctx.send(f'Error retrieving models: {e}\n\nStack trace:\n{traceback.format_exc()}')
 
 # Negative prompt command with AppConfig lock
 @bot.command(name='negative', help='Gets or sets the negative prompt.')
@@ -154,7 +154,7 @@ async def negative(ctx, *, negative_prompt = None):
                 output_text = "Your negative prompt is now set to:\n" + negative_prompt
         await send_large_message(ctx, output_text)
     except Exception as e:
-        await ctx.send(f'Error running negative prompt handler: {e}')
+        await ctx.send(f'Error running negative prompt handler: {e}\n\nStack trace:\n{traceback.format_exc()}')
 
 # Positive prompt command with AppConfig lock
 @bot.command(name='positive', help='Gets or sets the positive POST-prompt. A value of "none" disables this. It is added to the end of every prompt you submit via !generate.')
@@ -172,7 +172,7 @@ async def positive(ctx, *, positive_prompt = None):
                 output_text = "Your positive prompt is now set to:\n" + positive_prompt
         await send_large_message(ctx, output_text)
     except Exception as e:
-        await ctx.send(f'Error running negative prompt handler: {e}')
+        await ctx.send(f'Error running negative prompt handler: {e}\n\nStack trace:\n{traceback.format_exc()}')
 
 ## Image queue management
 def is_server_admin(ctx):
