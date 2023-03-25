@@ -45,14 +45,11 @@ class ImageGenerator:
         torch.cuda.empty_cache()
         logging.info("Generating a new variation pipe...")
         pipe = StableDiffusionImageVariationPipeline.from_pretrained(pretrained_model_name_or_path=model_id, torch_dtype=self.torch_dtype)
-        if use_attention_scaling:
-            logging.info('Using attention scaling, because high resolution was selected! Safety first!!')
-            pipe.enable_sequential_cpu_offload()
-            pipe.enable_attention_slicing(1)
-            # torch.backends.cudnn.benchmark = True
-            # torch.backends.cudnn.enabled = True
-        else:
-            pipe.to(self.device)
+        logging.info('Using attention scaling, because a variation is being crafted! Safety first!!')
+        pipe.enable_sequential_cpu_offload()
+        pipe.enable_attention_slicing(1)
+        # torch.backends.cudnn.benchmark = True
+        # torch.backends.cudnn.enabled = True
         pipe.safety_checker = lambda images, clip_input: (images, False)
         logging.info("Return the pipe...")
         return pipe

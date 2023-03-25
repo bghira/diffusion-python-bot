@@ -81,7 +81,7 @@ async def generate_image_from_queue():
         async with appconfig_lock:
             user_config = config.get_user_config(user_id)
             steps = config.get_user_setting(user_id, "steps", 50)
-            negative_prompt = config.get_user_setting(user_id, "negative_prompt", "(deformed, distorted, disfigured:1.3), poorly drawn, bad anatomy, wrong anatomy, extra limb, missing limb, floating limbs, (mutated hands and fingers:1.4), disconnected limbs, mutation, mutated, ugly, disgusting, blurry, amputation, flowers, human, man, woman")
+            negative_prompt = config.get_user_setting(user_id, "negative_prompt", "(child, baby, deformed, distorted, disfigured:1.3), poorly drawn, bad anatomy, wrong anatomy, extra limb, missing limb, floating limbs, (mutated hands and fingers:1.4), disconnected limbs, mutation, mutated, ugly, disgusting, blurry, amputation")
             positive_prompt = config.get_user_setting(user_id, "positive_prompt", "beautiful hyperrealistic")
             resolution = config.get_user_setting(user_id, "resolution", {'width': 800, 'height': 456})
             model_id = user_config.get('model', None)
@@ -123,7 +123,7 @@ async def set_steps(ctx, steps: int = None):
     async with appconfig_lock:
         user_config = config.get_user_config(user_id)
         if steps is None:
-            steps = user_config.get('steps', config.get_default_steps())
+            steps = config.get_user_setting(user_id, 'steps', 50)
             await ctx.send("Your current steps are set to " + str(steps))
         else:
             user_config['steps'] = steps

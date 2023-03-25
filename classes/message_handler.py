@@ -2,7 +2,7 @@ import discord
 import traceback
 from io import BytesIO
 from .image_generator import ImageGenerator
-from .app_config import ( AppConfig as config, AppConfig )
+from .app_config import AppConfig
 import logging
 from PIL import Image
 from asyncio import Queue
@@ -33,8 +33,8 @@ class MessageHandler:
         user_id = message.author.id
         logging.info("User id: " + str(user_id))
         await message.channel.send("Yo, " + message.author.name + "! I gotchu, bro! I'm on it, but it's gonna take a sec.")
-        resolution = config.get_user_setting(message.author.id, "resolution", {'width': 800, 'height': 456})
-        num_inference_steps = config.get_user_setting(message.author.id, "steps", 250)
+        resolution = self.config.get_user_setting(message.author.id, "resolution", {'width': 800, 'height': 456})
+        num_inference_steps = self.config.get_user_setting(message.author.id, "steps", 250)
         width = resolution['width']
         height = resolution['height']
         for attachment in message.attachments:
