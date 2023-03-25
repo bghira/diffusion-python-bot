@@ -14,6 +14,7 @@ import logging
 import os
 from io import BytesIO
 from transformers import AutoModel
+from asyncio import Lock
 
 # Set up the logging configuration
 logging.basicConfig(level=logging.INFO)
@@ -32,9 +33,10 @@ class ImageGenerator:
         {'width': 1280, 'height': 720, 'scaling_factor': 30},
         # Add more resolutions if needed
     ]
-    def __init__(self, device="cuda", torch_dtype=torch.float16):
+    def __init__(self, shared_queue_lock: Lock, device="cuda", torch_dtype=torch.float16):
         self.device = torch.device(device)
         self.torch_dtype = torch_dtype
+        self.lock = shared_queue_lock
 
     def get_variation_pipe(self, model_id, use_attention_scaling = False):
         logging.info("Clearing the CUDA cache...")

@@ -2,7 +2,7 @@ import os
 import datetime
 import discord
 import asyncio
-from threading import Lock
+from asyncio import Lock
 import traceback
 from discord.ext import commands
 from PIL import Image
@@ -24,8 +24,8 @@ intents.typing = False
 intents.presences = False
 
 bot = commands.Bot(command_prefix='!', intents=intents)
-image_generator = ImageGenerator()
-message_handler = MessageHandler(image_generator=image_generator, config=config)
+image_generator = ImageGenerator(image_queue_lock)
+message_handler = MessageHandler(image_generator=image_generator, config=config, shared_queue=image_queue, shared_queue_lock=image_queue_lock)
 message_handler.set_bot(bot)
 
 @bot.event
@@ -86,7 +86,8 @@ async def generate_image_from_queue():
         try:
             # Run the image generation in an executor
             await ctx.send("Begin image generation: " + prompt)
-            image = await bot.loop.run_in_executor(None, image_generator.generate_image, prompt, model_id, resolution, negative_prompt, steps, positive_prompt)
+            async with image_queue_lock:
+                image = await bot.loop.run_in_executor(None, image_generator.generate_image, prompt, model_id, resolution, negative_prompt, steps, positive_prompt)
             await ctx.send("Begin image processing: " + prompt)
             buffer = BytesIO()
             image.save(buffer, 'PNG')

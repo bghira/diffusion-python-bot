@@ -5,13 +5,16 @@ from .image_generator import ImageGenerator
 from .app_config import ( AppConfig as config, AppConfig )
 import logging
 from PIL import Image
-
+from asyncio import Queue
+from asyncio import Lock
 
 class MessageHandler:
-    def __init__(self, image_generator: ImageGenerator, config: AppConfig):
+    def __init__(self, image_generator: ImageGenerator, config: AppConfig, shared_queue: Queue, shared_queue_lock: Lock):
         self.image_generator = image_generator
         self.config = config
         self.bot = None  # This will be set later
+        self.queue = shared_queue
+        self.lock = shared_queue_lock
 
     def set_bot(self, bot):
         self.bot = bot
@@ -40,7 +43,8 @@ class MessageHandler:
                 input_image = Image.open(BytesIO(image_data))
                 prompt = message.content
                 try:
-                    generated_images = await self.bot.loop.run_in_executor(None, self.image_generator.generate_image_variations, width, height, input_image, num_inference_steps)
+                    async with self.lock:
+                        generated_images = await self.bot.loop.run_in_executor(None, self.image_generator.generate_image_variations, width, height, input_image, num_inference_steps)
                     for i, image in enumerate(generated_images):
                         buffer = BytesIO()
                         image.resize({1920, 1080}).save(buffer, 'PNG')
@@ -55,7 +59,7 @@ class MessageHandler:
             return
     
         lines = text.split("\n")
-        buffer = ""
+        buffer = "" 
         first_message = None
         for line in lines:
             if len(buffer) + len(line) + 1 > max_chars:
