@@ -19,6 +19,19 @@ from transformers import AutoModel
 logging.basicConfig(level=logging.INFO)
 
 class ImageGenerator:
+    resolutions = [
+        {'width': 128, 'height': 96, 'scaling_factor': 100},
+        {'width': 192, 'height': 128, 'scaling_factor': 94},
+        {'width': 256, 'height': 192, 'scaling_factor': 88},
+        {'width': 384, 'height': 256, 'scaling_factor': 76},
+        {'width': 512, 'height': 384, 'scaling_factor': 64},
+        {'width': 768, 'height': 512, 'scaling_factor': 52},
+        {'width': 800, 'height': 456, 'scaling_factor': 50},
+        {'width': 1024, 'height': 576, 'scaling_factor': 40},
+        {'width': 1152, 'height': 648, 'scaling_factor': 34},
+        {'width': 1280, 'height': 720, 'scaling_factor': 30},
+        # Add more resolutions if needed
+    ]
     def __init__(self, device="cuda", torch_dtype=torch.float16):
         self.device = torch.device(device)
         self.torch_dtype = torch_dtype
@@ -61,18 +74,20 @@ class ImageGenerator:
         logging.info("Return the pipe...")
         return pipe
 
-    def generate_image_variations(self, width, height, input_image, num_inference_steps=25, guidance_scale=7.5, use_attention_scaling = False):
+    def generate_image_variations(self, width: int, height: int, input_image, steps: int, guidance_scale=7.5, use_attention_scaling = False):
         input_image = input_image.resize((512, 384))
         logging.info("Initializing image variation generation pipeline...")
-        total_pixel_count = width * height
-        if total_pixel_count > 393216:
-            estimated_time = -2.492e-6 * total_pixel_count + 3.4
-            logging.info('Resolution ' + str(width) + 'x' + str(height) + ' has a pixel count greater than threshold. Using attention scaling expects to take '+ str(estimated_time) + ' seconds.')
+        scaling_factor = self.get_scaling_factor(width, height, self.resolutions)
+        if int(steps) > int(scaling_factor):
+            steps = int(scaling_factor)
+        logging.info(f"Scaling factor for {width}x{height}: {scaling_factor}")
+        if scaling_factor < 50:
+            logging.info('Resolution ' + str(width) + 'x' + str(height) + ' has a pixel count greater than threshold. Using attention scaling expects to take 30 seconds.')
             use_attention_scaling = True
         pipe = self.get_variation_pipe("lambdalabs/sd-image-variations-diffusers", use_attention_scaling=use_attention_scaling)
         input_image = pad(input_image, (input_image.size[0] // 2, input_image.size[1] // 2))
         # Generate image variations
-        generated_images = pipe(width=width, height=height, image=input_image, guidance_scale=guidance_scale, num_inference_steps=int(float(num_inference_steps))).images
+        generated_images = pipe(width=width, height=height, image=input_image, guidance_scale=guidance_scale, num_inference_steps=int(float(steps))).images
         del pipe
         return generated_images
 
@@ -80,11 +95,12 @@ class ImageGenerator:
         logging.info("Initializing image generation pipeline...")
         use_attention_scaling = False
         if resolution is not None:
-            total_pixel_count = resolution['width'] * resolution['height']
-            if total_pixel_count > 393216:
-                estimated_time = -2.492e-6 * total_pixel_count + 3.4
-                logging.info('Resolution ' + str(resolution['width']) + 'x' + str(resolution['height']) + ' has a pixel count greater than threshold. Using attention scaling expects to take '+ str(estimated_time) + ' seconds.')
+            scaling_factor = self.get_scaling_factor(resolution['width'], resolution['height'], self.resolutions)
+            logging.info(f"Scaling factor for {resolution['width']}x{resolution['height']}: {scaling_factor}")
+            if scaling_factor < 50:
+                logging.info('Resolution ' + str(resolution['width']) + 'x' + str(resolution['height']) + ' has a pixel count greater than threshold. Using attention scaling expects to take 30 seconds.')
                 use_attention_scaling = True
+                steps = scaling_factor
             side_x = resolution['width']
             side_y = resolution['height']
         else:
@@ -139,35 +155,17 @@ class ImageGenerator:
     # Helper to list / check a given resolution against the fold.
     async def list_available_resolutions(self, user_id = None, resolution=None):
         config = AppConfig()
-        resolutions = [
-            {'width': 16, 'height': 16},
-            {'width': 24, 'height': 16},
-            {'width': 32, 'height': 24},
-            {'width': 48, 'height': 32},
-            {'width': 64, 'height': 48},
-            {'width': 96, 'height': 64},
-            {'width': 128, 'height': 96},
-            {'width': 192, 'height': 128},
-            {'width': 256, 'height': 192},
-            {'width': 384, 'height': 256},
-            {'width': 512, 'height': 384},
-            {'width': 768, 'height': 512},
-            {'width': 800, 'height': 456},
-            {'width': 1024, 'height': 576},
-            {'width': 1152, 'height': 648},
-            {'width': 1280, 'height': 720},
-            # Add more resolutions if needed
-        ]
+
         current_resolution_indicator = " "
         if resolution is not None:
             width, height = map(int, resolution.split('x'))
-            if any(r['width'] == width and r['height'] == height for r in resolutions):
+            if any(r['width'] == width and r['height'] == height for r in self.resolutions):
                 return True
             else:
                 return False
 
         resolution_list = ""
-        for r in resolutions:
+        for r in self.resolutions:
             if user_id is not None:
                 user_resolution = config.get_user_resolution(user_id=user_id)
                 if user_resolution is not None:
@@ -177,3 +175,8 @@ class ImageGenerator:
             current_resolution_indicator = "  "
 
         return resolution_list
+    def get_scaling_factor(self, width, height, scaled_resolutions):
+        for res in scaled_resolutions:
+            if res['width'] == width and res['height'] == height:
+                return int(res['scaling_factor'])
+        return None
