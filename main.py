@@ -10,6 +10,7 @@ from io import BytesIO
 from classes.app_config import AppConfig
 from classes.image_generator import ImageGenerator
 from classes.message_handler import MessageHandler
+from user_commands import UserCommands
 
 config = AppConfig()
 TOKEN = config.get_discord_api_key()
@@ -24,6 +25,7 @@ intents.typing = False
 intents.presences = False
 
 bot = commands.Bot(command_prefix='!', intents=intents)
+bot.add_cog(UserCommands(bot, appconfig_lock, config))
 image_generator = ImageGenerator(image_queue_lock)
 message_handler = MessageHandler(image_generator=image_generator, config=config, shared_queue=image_queue, shared_queue_lock=image_queue_lock)
 message_handler.set_bot(bot)
@@ -78,10 +80,10 @@ async def generate_image_from_queue():
         user_id = ctx.author.id
         async with appconfig_lock:
             user_config = config.get_user_config(user_id)
-            steps = config.get_user_steps(user_id)
-            negative_prompt = config.get_user_negative_prompt(user_id=ctx.author.id)
-            positive_prompt = config.get_user_positive_prompt(user_id=ctx.author.id)
-            resolution = config.get_user_resolution(user_id=ctx.author.id)
+            steps = config.get_user_setting(user_id, "steps", 50)
+            negative_prompt = config.get_user_setting(user_id, "negative_prompt", "(deformed, distorted, disfigured:1.3), poorly drawn, bad anatomy, wrong anatomy, extra limb, missing limb, floating limbs, (mutated hands and fingers:1.4), disconnected limbs, mutation, mutated, ugly, disgusting, blurry, amputation, flowers, human, man, woman")
+            positive_prompt = config.get_user_setting(user_id, "positive_prompt", "beautiful hyperrealistic")
+            resolution = config.get_user_setting(user_id, "resolution", {'width': 800, 'height': 456})
             model_id = user_config.get('model', None)
         try:
             # Run the image generation in an executor
@@ -92,7 +94,7 @@ async def generate_image_from_queue():
             buffer = BytesIO()
             image.save(buffer, 'PNG')
             buffer.seek(0)
-            message = "Prompt: " + str(prompt) + "\nModel: " + str(model_id) + "\nResolution: " + str(resolution['width']) + 'x' + str(resolution['height']) + "\nSteps: " + str(steps)
+            message = "**Prompt:** " + str(prompt) + "\n**Model:** " + str(model_id) + "\n**Resolution:** " + str(resolution['width']) + 'x' + str(resolution['height']) + "\n**Steps:** " + str(steps)
             await ctx.send(content=message, file=discord.File(buffer, 'generated_image.png'))
         except Exception as e:
             error_message = f'Error generating image: {e}\n\nStack trace:\n{traceback.format_exc()}'
@@ -114,44 +116,45 @@ async def set_model(ctx, *, model_id = None):
         user_config['model'] = model_id
         config.set_user_config(user_id, user_config)
     await ctx.send(f'Default model for user {ctx.author.name} has been set to {model_id}.')
-# Set resolution command with AppConfig lock
+
 @bot.command(name='steps', help='Sets the intensity for generated images. Max 1500.')
-async def set_steps(ctx, steps = None):
+async def set_steps(ctx, steps: int = None):
     user_id = ctx.author.id
     async with appconfig_lock:
+        user_config = config.get_user_config(user_id)
         if steps is None:
-            steps = config.get_user_steps(user_id)
+            steps = user_config.get('steps', config.get_default_steps())
             await ctx.send("Your current steps are set to " + str(steps))
         else:
-            old_steps = config.get_user_steps(user_id)
-            config.set_user_steps(user_id, steps)
-            await ctx.send("Your steps have been updated from " + str(old_steps) + " to " + str(steps))
+            user_config['steps'] = steps
+            config.set_user_config(user_id, user_config)
+            await ctx.send("Your steps have been updated to " + str(steps))
+
 # Set resolution command with AppConfig lock
 available_resolutions = asyncio.run(image_generator.list_available_resolutions())
 @bot.command(name='resolution', help='Set or get your default resolution for generated images.\nAvailable resolutions:\n' + str(available_resolutions))
-async def set_resolution(ctx, resolution = None):
-    try:
-        user_id = ctx.author.id
-        available_resolutions = await image_generator.list_available_resolutions(user_id, resolution)
-        async with appconfig_lock:
-            if resolution is None:
-                resolution = config.get_user_resolution(user_id)
-                await ctx.send(f'Available resolutions:\n' + available_resolutions)
-                return
+async def set_resolution(ctx, resolution=None):
+    user_id = ctx.author.id
+    async with appconfig_lock:
+        user_config = config.get_user_config(user_id)
+        if resolution is None:
+            resolution = user_config.get('resolution', {"width":800,"height":456})
+            await ctx.send(f'Your current resolution is set to {resolution["width"]}x{resolution["height"]}.')
+            return
+
         if 'x' in resolution:
             width, height = map(int, resolution.split('x'))
         else:
             width, height = map(int, resolution.split())
 
-        async with appconfig_lock:
-            if available_resolutions is False:
-                await ctx.send(f'Invalid resolution. Available resolutions:\n' + await image_generator.list_available_resolutions())
-                return
-            config.set_user_resolution(user_id, width, height)
-            total_pixels = width * height
-        await ctx.send(f"Default resolution set to {width}x{height} for user {ctx.author.name} using {total_pixels} pixel count.")
-    except ValueError:
-        await ctx.send("Invalid resolution format. Please provide resolution as '1920x1080' or '1920 1080'.")
+        if not image_generator.is_valid_resolution(width, height):
+            available_resolutions = await image_generator.list_available_resolutions()
+            await ctx.send(f'Invalid resolution. Available resolutions:\n' + available_resolutions)
+            return
+
+        user_config['resolution'] = {'width': width, 'height': height}
+        config.set_user_config(user_id, user_config)
+        await ctx.send(f"Default resolution set to {width}x{height} for user {ctx.author.name}.")
 
 @bot.command(name='listmodels', help='Lists the available models from Hugging Face.')
 async def list_models(ctx):
@@ -164,36 +167,37 @@ async def list_models(ctx):
 
 # Negative prompt command with AppConfig lock
 @bot.command(name='negative', help='Gets or sets the negative prompt.')
-async def negative(ctx, *, negative_prompt = None):
-    try:
-        async with appconfig_lock:
-            if negative_prompt is None:
-                negative_prompt = config.get_user_negative_prompt(user_id=ctx.author.id)
-                output_text = "Your negative prompt currently is set as:\n" + negative_prompt
-            else:
-                config.set_user_negative_prompt(user_id=ctx.author.id, negative_prompt=negative_prompt)
-                output_text = "Your negative prompt is now set to:\n" + negative_prompt
-        await send_large_message(ctx, output_text)
-    except Exception as e:
-        await ctx.send(f'Error running negative prompt handler: {e}\n\nStack trace:\n```{traceback.format_exc()}```')
+async def negative(ctx, *, negative_prompt=None):
+    user_id = ctx.author.id
+    async with appconfig_lock:
+        user_config = config.get_user_config(user_id)
+        if negative_prompt is None:
+            negative_prompt = user_config.get('negative_prompt', config.get_default_negative_prompt())
+            output_text = "Your negative prompt currently is set as:\n" + negative_prompt
+        else:
+            user_config['negative_prompt'] = negative_prompt
+            config.set_user_config(user_id, user_config)
+            output_text = "Your negative prompt is now set to:\n" + negative_prompt
+    await send_large_message(ctx, output_text)
 
 # Positive prompt command with AppConfig lock
 @bot.command(name='positive', help='Gets or sets the positive POST-prompt. A value of "none" disables this. It is added to the end of every prompt you submit via !generate.')
-async def positive(ctx, *, positive_prompt = None):
-    try:
-        async with appconfig_lock:
-            if positive_prompt is None:
-                positive_prompt = config.get_user_positive_prompt(user_id=ctx.author.id)
-                output_text = "Your positive prompt currently is set as:\n" + positive_prompt
-            elif positive_prompt == "none":
-                config.set_user_positive_prompt(user_id=ctx.author.id, positive_prompt="")
-                output_text = "Your positive prompt is now set to:\n" + positive_prompt
-            else:
-                config.set_user_positive_prompt(user_id=ctx.author.id, positive_prompt=positive_prompt)
-                output_text = "Your positive prompt is now set to:\n" + positive_prompt
-        await send_large_message(ctx, output_text)
-    except Exception as e:
-        await ctx.send(f'Error running negative prompt handler: {e}\n\nStack trace:\n{traceback.format_exc()}')
+async def positive(ctx, *, positive_prompt=None):
+    user_id = ctx.author.id
+    async with appconfig_lock:
+        user_config = config.get_user_config(user_id)
+        if positive_prompt is None:
+            positive_prompt = user_config.get('positive_prompt', config.get_default_positive_prompt())
+            output_text = "Your positive prompt currently is set as:\n" + positive_prompt
+        elif positive_prompt.lower() == "none":
+            user_config['positive_prompt'] = ""
+            config.set_user_config(user_id, user_config)
+            output_text = "Your positive prompt is now set to:\n" + positive_prompt
+        else:
+            user_config['positive_prompt'] = positive_prompt
+            config.set_user_config(user_id, user_config)
+            output_text = "Your positive prompt is now set to:\n" + positive_prompt
+    await send_large_message(ctx, output_text)
 
 ## Image queue management
 def is_server_admin(ctx):

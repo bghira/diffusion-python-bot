@@ -169,7 +169,7 @@ class ImageGenerator:
         resolution_list = ""
         for r in self.resolutions:
             if user_id is not None:
-                user_resolution = config.get_user_resolution(user_id=user_id)
+                user_resolution = config.get_user_setting(user_id, "resolution", {'width': 800, 'height': 456})
                 if user_resolution is not None:
                     if user_resolution['width'] == r['width'] and user_resolution['height'] == r['height']:
                         current_resolution_indicator = "\>"
@@ -182,3 +182,9 @@ class ImageGenerator:
             if res['width'] == width and res['height'] == height:
                 return int(res['scaling_factor'])
         return None
+    def is_valid_resolution(self, width, height):
+        for res in self.resolutions:
+            if res['width'] == width and res['height'] == height:
+                return True
+        return False
+        
