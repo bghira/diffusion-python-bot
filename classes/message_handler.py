@@ -22,8 +22,14 @@ class MessageHandler:
         await self.bot.process_commands(message)
 
     async def _handle_image_attachment(self, message):
+        # Yo, check if the bot is mentioned, bro!
+        if not discord.utils.find(lambda mention: mention.id == self.bot.user.id, message.mentions):
+            # If not mentioned, just chill and return, bro.
+            return
+        # If the bot is mentioned, let's do some work, bro!
         user_id = message.author.id
         logging.info("User id: " + str(user_id))
+        await message.channel.send("Yo, " + message.author.name + "! I gotchu, bro! I'm on it, but it's gonna take a sec.")
         resolution = self.config.get_user_resolution(user_id=message.author.id)
         num_inference_steps = self.config.get_user_steps(user_id=message.author.id)
         width = resolution['width']

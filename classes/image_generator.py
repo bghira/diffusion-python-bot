@@ -32,7 +32,7 @@ class ImageGenerator:
         pipe = StableDiffusionImageVariationPipeline.from_pretrained(pretrained_model_name_or_path=model_id, torch_dtype=self.torch_dtype)
         if use_attention_scaling:
             logging.info('Using attention scaling, because high resolution was selected! Safety first!!')
-            pipe.enable_sequential_cpu_offload(offload_buffers=True)
+            pipe.enable_sequential_cpu_offload()
             pipe.enable_attention_slicing(1)
             # torch.backends.cudnn.benchmark = True
             # torch.backends.cudnn.enabled = True
@@ -62,15 +62,14 @@ class ImageGenerator:
         return pipe
 
     def generate_image_variations(self, width, height, input_image, num_inference_steps=25, guidance_scale=7.5, use_attention_scaling = False):
+        input_image = input_image.resize((512, 384))
         logging.info("Initializing image variation generation pipeline...")
         total_pixel_count = width * height
         if total_pixel_count > 393216:
             estimated_time = -2.492e-6 * total_pixel_count + 3.4
             logging.info('Resolution ' + str(width) + 'x' + str(height) + ' has a pixel count greater than threshold. Using attention scaling expects to take '+ str(estimated_time) + ' seconds.')
             use_attention_scaling = True
-        width = int(width / 2)
-        height = int(height / 2)
-        pipe = self.get_variation_pipe("lambdalabs/sd-image-variations-diffusers")
+        pipe = self.get_variation_pipe("lambdalabs/sd-image-variations-diffusers", use_attention_scaling=use_attention_scaling)
         input_image = pad(input_image, (input_image.size[0] // 2, input_image.size[1] // 2))
         # Generate image variations
         generated_images = pipe(width=width, height=height, image=input_image, guidance_scale=guidance_scale, num_inference_steps=int(float(num_inference_steps))).images
