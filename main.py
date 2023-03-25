@@ -92,7 +92,7 @@ async def generate_image_from_queue():
             await ctx.send(file=discord.File(buffer, 'generated_image.png'))
         except Exception as e:
             error_message = f'Error generating image: {e}\n\nStack trace:\n{traceback.format_exc()}'
-            await send_large_message(f'Error generating image: {error_message}')
+            await send_large_message(ctx, f'Error generating image: {error_message}')
         finally:
             image_queue.task_done()
 # Set model command with AppConfig lock

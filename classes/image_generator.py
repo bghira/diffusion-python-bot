@@ -2,10 +2,10 @@
 import numpy as np
 import textwrap
 from torchvision.transforms.functional import pad
-
 import torch
 import time
 from diffusers import StableDiffusionPipeline, StableDiffusionImageVariationPipeline
+from transformers import CLIPProcessor, CLIPModel
 import requests
 from huggingface_hub import hf_hub_url, HfApi, snapshot_download
 from .app_config import AppConfig
@@ -14,7 +14,7 @@ import logging
 import os
 from io import BytesIO
 from .model_downloader import ModelDownloader
-
+from .clip_helper import ClipHelper
 # Set up the logging configuration
 logging.basicConfig(level=logging.INFO)
 
@@ -22,7 +22,6 @@ class ImageGenerator:
     def __init__(self, device="cuda", torch_dtype=torch.float16):
         self.device = torch.device(device)
         self.torch_dtype = torch_dtype
-        
     def get_pipe(self, model_id):
         logging.info("Clearing the CUDA cache...")
         torch.cuda.empty_cache()
@@ -32,27 +31,12 @@ class ImageGenerator:
         pipe.to(self.device)
         pipe.safety_checker = lambda images, clip_input: (images, False)
         logging.info("Return the pipe...")
-        return pipe, pipe.diffusion_model.clip_model
-    def _process_prompt(self, prompt, clip_model, max_length=75):
-        # Split the prompt into chunks of max_length tokens
-        prompt_chunks = textwrap.wrap(prompt, width=max_length)
-
-        # Initialize a list to store the encoded chunks
-        encoded_chunks = []
-        for chunk in prompt_chunks:
-            # Encode the chunk using the CLIP model and move it to the CPU
-            encoded_chunk = clip_model.encode_text(clip.tokenize(chunk).to(self.device)).detach().cpu()
-            # Append the encoded chunk to the list
-            encoded_chunks.append(encoded_chunk)
-
-        # Concatenate the encoded chunks along the sequence dimension (dim=1)
-        encoded_prompt = torch.cat(encoded_chunks, dim=1)
-        return encoded_prompt
-
+        self.pipe = pipe
     def generate_image(self, prompt, model_id=None, resolution=None, negative_prompt=None, steps=50, positive_prompt=None, max_retries=1, retry_delay=10):
-        logging.info("Initializing image generation pipeline...")
-        pipe, clip_model = self.get_pipe(model_id)
-        logging.info("Copied CLIP model and pipe to the local context")
+        logging.info("Create ClipHelper instance...")
+        self.get_pipe(model_id)
+        # Initialize the CLIP model separately
+        clip_helper = ClipHelper(positive_prompt=positive_prompt, negative_prompt=negative_prompt)
         if resolution is not None:
             side_x = resolution['width']
             if side_x > 1280:
@@ -67,23 +51,19 @@ class ImageGenerator:
         entire_prompt = prompt
         if positive_prompt is not None:
             entire_prompt = str(prompt) + ' , ' + str(positive_prompt)
-        
-        logging.info("Processing the prompt...")
-        processed_prompt = self._process_prompt(entire_prompt, clip_model)
-
         for attempt in range(1, max_retries + 1):
             try:
                 logging.info(f"Attempt {attempt}: Generating image...")
                 # Use the processed_prompt instead of the raw prompt
-                image = pipe(prompt=processed_prompt, height=side_y, width=side_x, num_inference_steps=int(float(steps)), negative_prompt=negative_prompt).images[0]
-                del pipe
+                image = clip_helper.render_long_prompt(self.pipe, height=side_y, width=side_x, num_inference_steps=int(float(steps)))
+                del self.pipe
                 torch.cuda.empty_cache()
 
                 logging.info("Image generation successful!")
                 return image
             except Exception as e:
                 logging.error(f"Attempt {attempt}: Image generation failed with error: {e}")
-                del pipe
+                del self.pipe
                 torch.cuda.empty_cache()
                 if attempt < max_retries:
                     time.sleep(retry_delay)
