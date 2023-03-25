@@ -9,6 +9,7 @@ from PIL import Image
 from io import BytesIO
 from classes.app_config import AppConfig
 from classes.image_generator import ImageGenerator
+from classes.message_handler import MessageHandler
 
 config = AppConfig()
 TOKEN = config.get_discord_api_key()
@@ -24,6 +25,7 @@ intents.presences = False
 
 bot = commands.Bot(command_prefix='!', intents=intents)
 image_generator = ImageGenerator()
+message_handler = MessageHandler(image_generator=image_generator, bot=bot, shared_queue=image_queue)
 
 @bot.event
 async def on_ready():
@@ -82,14 +84,14 @@ async def generate_image_from_queue():
             model_id = user_config.get('model', None)
         try:
             # Run the image generation in an executor
-            await ctx.send("Begin image generation")
+            await ctx.send("Begin image generation: " + prompt)
             image = await bot.loop.run_in_executor(None, image_generator.generate_image, prompt, model_id, resolution, negative_prompt, steps, positive_prompt)
-            await ctx.send("Begin image processing")
+            await ctx.send("Begin image processing: " + prompt)
             buffer = BytesIO()
             image.save(buffer, 'PNG')
             buffer.seek(0)
-            await ctx.send("Begin image upload")
-            await ctx.send(file=discord.File(buffer, 'generated_image.png'))
+            message = "Prompt: " + str(prompt) + "\nModel: " + str(model_id) + "\nResolution: " + str(resolution['width']) + 'x' + str(resolution['height']) + "\nSteps: " + str(steps)
+            await ctx.send(content=message, file=discord.File(buffer, 'generated_image.png'))
         except Exception as e:
             error_message = f'Error generating image: {e}\n\nStack trace:\n{traceback.format_exc()}'
             await send_large_message(ctx, f'Error generating image: {error_message}')
@@ -97,10 +99,16 @@ async def generate_image_from_queue():
             image_queue.task_done()
 # Set model command with AppConfig lock
 @bot.command(name='setmodel', help='Set the default model for the user.')
-async def set_model(ctx, *, model_id):
+async def set_model(ctx, *, model_id = None):
     user_id = ctx.author.id
     async with appconfig_lock:
         user_config = config.get_user_config(user_id)
+        if model_id is None:
+            model_id = user_config.get('model', None)
+            if model_id is None:
+                model_id = config.get_default_model()
+            await ctx.send(f'Your current model is set to {model_id}.')
+            return
         user_config['model'] = model_id
         config.set_user_config(user_id, user_config)
     await ctx.send(f'Default model for user {ctx.author.name} has been set to {model_id}.')
@@ -117,15 +125,20 @@ async def set_steps(ctx, steps = None):
             config.set_user_steps(user_id, steps)
             await ctx.send("Your steps have been updated from " + str(old_steps) + " to " + str(steps))
 # Set resolution command with AppConfig lock
-@bot.command(name='setresolution', help='Sets the default resolution for generated images: !setresolution 640x480\nAvailable resolutions: ')
-async def set_resolution(ctx, resolution: str):
+@bot.command(name='resolution', help='Sets the default resolution for generated images: !resolution 640x480\nAvailable resolutions: ')
+async def set_resolution(ctx, resolution = None):
     try:
+        user_id = ctx.author.id
+        async with appconfig_lock:
+            if resolution is None:
+                resolution = config.get_user_resolution(user_id)
+                await ctx.send(f'Your current resolution is set to ' + str(resolution['width']) + 'x' + str(resolution['height']) + '.')
+                return
         if 'x' in resolution:
             width, height = map(int, resolution.split('x'))
         else:
             width, height = map(int, resolution.split())
 
-        user_id = ctx.author.id
         async with appconfig_lock:
             config.set_user_resolution(user_id, width, height)
         await ctx.send(f"Default resolution set to {width}x{height} for user {ctx.author.name}.")
@@ -218,34 +231,17 @@ async def remove_item_from_queue(queue, index):
             await new_queue.put(item)
 
     return new_queue, removed_item
+async def generate_variants(image_generator, input_image):
+    prompt = "a variation of the input image"
+    generated_image = image_generator.generate_image(prompt, model_id="lambdalabs/sd-image-variations-diffusers", steps=25)
+    return [generated_image]
+
 @bot.event
 async def on_message(message):
     # If the message is from the bot itself, ignore it
     if message.author == bot.user:
         return
-
-    # If the message contains an image attachment, generate image variants
-    if message.attachments:
-        for attachment in message.attachments:
-            if attachment.content_type.startswith('image/'):
-                # Download the image and pass it to the image generation function
-                image_data = await attachment.read()
-                input_image = Image.open(BytesIO(image_data))
-
-                # Generate image variants and send them back to the channel
-                try:
-                    generated_images = await bot.loop.run_in_executor(None, image_generator.generate_variants, input_image)
-                    for i, image in enumerate(generated_images):
-                        buffer = BytesIO()
-                        image.save(buffer, 'PNG')
-                        buffer.seek(0)
-                        await message.channel.send(file=discord.File(buffer, f'variant_{i}.png'))
-                except Exception as e:
-                    error_message = f'Error generating image variant: {e}\n\nStack trace:\n{traceback.format_exc()}'
-                    await message.channel.send(error_message)
-    
-    # If the message contains a command, process it
-    await bot.process_commands(message)
+    await message_handler.handle_message(message)
 if __name__ == "__main__":
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print(f"[{timestamp}] Starting bot...")
