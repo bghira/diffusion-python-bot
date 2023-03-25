@@ -102,7 +102,8 @@ class ImageGenerator:
             if scaling_factor < 50:
                 logging.info('Resolution ' + str(resolution['width']) + 'x' + str(resolution['height']) + ' has a pixel count greater than threshold. Using attention scaling expects to take 30 seconds.')
                 use_attention_scaling = True
-                steps = scaling_factor
+                if steps > scaling_factor:
+                    steps = scaling_factor
             side_x = resolution['width']
             side_y = resolution['height']
         else:

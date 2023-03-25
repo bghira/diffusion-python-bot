@@ -172,7 +172,7 @@ async def negative(ctx, *, negative_prompt=None):
     async with appconfig_lock:
         user_config = config.get_user_config(user_id)
         if negative_prompt is None:
-            negative_prompt = user_config.get('negative_prompt', config.get_default_negative_prompt())
+            negative_prompt = user_config.get('negative_prompt', '(deformed, distorted, disfigured:1.3), poorly drawn, bad anatomy, wrong anatomy, extra limb, missing limb, floating limbs, (mutated hands and fingers:1.4), disconnected limbs, mutation, mutated, ugly, disgusting, blurry, amputation')
             output_text = "Your negative prompt currently is set as:\n" + negative_prompt
         else:
             user_config['negative_prompt'] = negative_prompt
@@ -187,7 +187,7 @@ async def positive(ctx, *, positive_prompt=None):
     async with appconfig_lock:
         user_config = config.get_user_config(user_id)
         if positive_prompt is None:
-            positive_prompt = user_config.get('positive_prompt', config.get_default_positive_prompt())
+            positive_prompt = user_config.get('positive_prompt', 'beautiful hyperrealistic')
             output_text = "Your positive prompt currently is set as:\n" + positive_prompt
         elif positive_prompt.lower() == "none":
             user_config['positive_prompt'] = ""
