@@ -25,7 +25,8 @@ intents.presences = False
 
 bot = commands.Bot(command_prefix='!', intents=intents)
 image_generator = ImageGenerator()
-message_handler = MessageHandler(image_generator=image_generator, bot=bot, shared_queue=image_queue)
+message_handler = MessageHandler(image_generator=image_generator, config=config)
+message_handler.set_bot(bot)
 
 @bot.event
 async def on_ready():
@@ -125,14 +126,16 @@ async def set_steps(ctx, steps = None):
             config.set_user_steps(user_id, steps)
             await ctx.send("Your steps have been updated from " + str(old_steps) + " to " + str(steps))
 # Set resolution command with AppConfig lock
-@bot.command(name='resolution', help='Sets the default resolution for generated images: !resolution 640x480\nAvailable resolutions: ')
+available_resolutions = asyncio.run(image_generator.list_available_resolutions())
+@bot.command(name='resolution', help='Set or get your default resolution for generated images.\nAvailable resolutions:\n' + str(available_resolutions))
 async def set_resolution(ctx, resolution = None):
     try:
         user_id = ctx.author.id
+        available_resolutions = await image_generator.list_available_resolutions(user_id, resolution)
         async with appconfig_lock:
             if resolution is None:
                 resolution = config.get_user_resolution(user_id)
-                await ctx.send(f'Your current resolution is set to ' + str(resolution['width']) + 'x' + str(resolution['height']) + '.')
+                await ctx.send(f'Available resolutions:\n' + available_resolutions)
                 return
         if 'x' in resolution:
             width, height = map(int, resolution.split('x'))
@@ -140,8 +143,12 @@ async def set_resolution(ctx, resolution = None):
             width, height = map(int, resolution.split())
 
         async with appconfig_lock:
+            if available_resolutions is False:
+                await ctx.send(f'Invalid resolution. Available resolutions:\n' + await image_generator.list_available_resolutions())
+                return
             config.set_user_resolution(user_id, width, height)
-        await ctx.send(f"Default resolution set to {width}x{height} for user {ctx.author.name}.")
+            total_pixels = width * height
+        await ctx.send(f"Default resolution set to {width}x{height} for user {ctx.author.name} using {total_pixels} pixel count.")
     except ValueError:
         await ctx.send("Invalid resolution format. Please provide resolution as '1920x1080' or '1920 1080'.")
 
@@ -167,7 +174,7 @@ async def negative(ctx, *, negative_prompt = None):
                 output_text = "Your negative prompt is now set to:\n" + negative_prompt
         await send_large_message(ctx, output_text)
     except Exception as e:
-        await ctx.send(f'Error running negative prompt handler: {e}\n\nStack trace:\n{traceback.format_exc()}')
+        await ctx.send(f'Error running negative prompt handler: {e}\n\nStack trace:\n```{traceback.format_exc()}```')
 
 # Positive prompt command with AppConfig lock
 @bot.command(name='positive', help='Gets or sets the positive POST-prompt. A value of "none" disables this. It is added to the end of every prompt you submit via !generate.')
@@ -235,7 +242,6 @@ async def generate_variants(image_generator, input_image):
     prompt = "a variation of the input image"
     generated_image = image_generator.generate_image(prompt, model_id="lambdalabs/sd-image-variations-diffusers", steps=25)
     return [generated_image]
-
 @bot.event
 async def on_message(message):
     # If the message is from the bot itself, ignore it
