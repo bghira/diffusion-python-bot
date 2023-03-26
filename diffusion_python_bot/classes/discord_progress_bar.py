@@ -5,16 +5,18 @@ class DiscordProgressBar:
         self.progress_bar_length = progress_bar_length
         self.original_stdout = original_stdout
         self.current_step = 0
+        self.progress_message = None
         print("Created discord progress bar tracker.")
 
     async def update_progress_bar(self, step):
-        print("Running discord update_progress_bar")
-        print("update_progress_bar hit step " + str(step))
         self.current_step = step
         progress = self.current_step / self.total_steps
         filled_length = int(progress * self.progress_bar_length)
         bar = "█" * filled_length + "-" * (self.progress_bar_length - filled_length)
         percent = round(progress * 100, 1)
         progress_text = f"[{bar}] {percent}% complete"
-        print(f"Updating progress in Discord: {progress_text}\n")  # Add this line
-        await self.ctx.send(progress_text)
+        self.original_stdout.write(f"Updating progress in Discord: {progress_text}\n")  # Add this line
+        if self.progress_message is None:
+            self.progress_message = await self.ctx.send(progress_text)
+        else:
+            await self.progress_message.edit(content=progress_text)
