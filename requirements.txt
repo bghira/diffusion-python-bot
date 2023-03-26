@@ -1,0 +1,11 @@
+accelerate
+safetensors
+diffusers
+transformers
+tensorflow
+torch
+xformers
+torchvision
+torchaudio
+huggingface_hub
+tensorrt
