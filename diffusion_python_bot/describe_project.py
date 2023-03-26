@@ -1,3 +1,4 @@
+import argparse
 import os
 from pathlib import Path
 from typing import List, Tuple
@@ -64,10 +65,32 @@ def get_tldr(prompt: str) -> str:
     return response.choices[0].text.strip()
 
 
-if __name__ == "__main__":
+def main(local_only: bool = False) -> None:
+    """
+    Main function to run the script.
+
+    Args:
+        local_only (bool, optional): Flag to control whether to dump the prompt to stdout or send it to the API.
+                                     Defaults to False.
+    """
     project_path = "/diffusion_python_bot"
     project_content = traverse_project(project_path)
     tokenized_content = tokenize(project_content)
 
-    tldr = get_tldr(tokenized_content)
-    print(f"TL;DR: {tldr}")
+    if local_only:
+        print("Tokenized content:")
+        print(tokenized_content)
+    else:
+        tldr = get_tldr(tokenized_content)
+        print(f"TL;DR: {tldr}")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Generate TL;DR for a Python project")
+    parser.add_argument(
+        "--local-only",
+        action="store_true",
+        help="Dump the tokenized content to stdout instead of sending it to the API",
+    )
+    args = parser.parse_args()
+    main(local_only=args.local_only)
