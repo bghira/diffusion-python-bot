@@ -7,7 +7,8 @@ import logging
 from PIL import Image
 from asyncio import Queue
 from asyncio import Lock
-
+from .discord_log_handler import DiscordLogHandler
+from .discord_progress_bar import DiscordProgressBar
 
 class MessageHandler:
     def __init__(
@@ -58,7 +59,14 @@ class MessageHandler:
             if attachment.content_type.startswith("image/"):
                 image_data = await attachment.read()
                 input_image = Image.open(BytesIO(image_data))
-                prompt = message.content
+                prompt = message.content # Not used yet, but, good to have.
+                ctx = message.channel # Channel context
+                logger = self.setup_logger(ctx)
+                # Call your image generation function and pass the logger
+                image = self.image_generator.generate_image(prompt, logger=logger)
+                # Create an instance of the custom DiscordProgressBar
+                discord_progress_bar = DiscordProgressBar(self, ctx)
+
                 try:
                     async with self.lock:
                         generated_images = await self.bot.loop.run_in_executor(
@@ -100,3 +108,15 @@ class MessageHandler:
 
         if buffer:
             await thread.send_message(buffer)
+
+    def setup_logger(self, ctx):
+        logger = logging.getLogger('discord_image_pipeline')
+        logger.setLevel(logging.DEBUG)
+
+        discord_handler = DiscordLogHandler(ctx)
+        discord_handler.setLevel(logging.DEBUG)
+        formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(message)s')
+        discord_handler.setFormatter(formatter)
+        logger.addHandler(discord_handler)
+
+        return logger

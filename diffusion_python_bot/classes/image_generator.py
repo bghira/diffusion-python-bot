@@ -2,11 +2,12 @@
 import numpy as np
 import textwrap
 from torchvision.transforms.functional import pad
-
+import sys
 import torch
 import time
 from diffusers import StableDiffusionPipeline, StableDiffusionImageVariationPipeline
 import requests
+from .pytorch_stderr_filter import FilteringStderrWrapper
 from huggingface_hub import hf_hub_url, HfApi, snapshot_download
 from .app_config import AppConfig
 from PIL import Image
@@ -15,10 +16,8 @@ import os
 from io import BytesIO
 from transformers import AutoModel
 from asyncio import Lock
-
-# Set up the logging configuration
-logging.basicConfig(level=logging.INFO)
-
+from tqdm import tqdm
+import traceback
 
 class ImageGenerator:
     resolutions = [
@@ -135,16 +134,16 @@ class ImageGenerator:
     def generate_image(
         self,
         prompt,
-        model_id=None,
-        resolution=None,
-        negative_prompt=None,
-        steps=50,
-        positive_prompt=None,
-        max_retries=1,
-        retry_delay=10,
+        model_id,
+        resolution,
+        negative_prompt,
+        steps,
+        positive_prompt,
+        tqdm_capture,
     ):
         logging.info("Initializing image generation pipeline...")
         use_attention_scaling = False
+        max_retries = retry_delay = 5
         if resolution is not None:
             scaling_factor = self.get_scaling_factor(
                 resolution["width"], resolution["height"], self.resolutions
@@ -170,6 +169,13 @@ class ImageGenerator:
         logging.info("Set custom resolution")
         pipe = self.get_pipe(model_id, use_attention_scaling)
         logging.info("Copied pipe to the local context")
+        logging.info("REDIRECTING THE PRECIOUS, STDOUT... SORRY IF THAT UPSETS YOU")
+        # Redirect sys.stdout to capture tqdm output
+        original_stdout = sys.stdout
+        original_stderr = sys.stderr
+        # sys.stdout = tqdm_capture
+        # sys.stderr = FilteringStderrWrapper(sys.stderr, sys.stdout)
+        sys.stderr = tqdm_capture
         # Combine the main prompt and positive_prompt if provided
         entire_prompt = prompt
         if positive_prompt is not None:
@@ -178,13 +184,17 @@ class ImageGenerator:
             try:
                 logging.info(f"Attempt {attempt}: Generating image...")
                 with torch.no_grad():
-                    image = pipe(
-                        prompt=entire_prompt,
-                        height=side_y,
-                        width=side_x,
-                        num_inference_steps=int(float(steps)),
-                        negative_prompt=negative_prompt,
-                    ).images[0]
+                    with tqdm(
+                        total=steps, ncols=100, file=tqdm_capture
+                    ) as pbar:
+                        # pbar.external_write_mode(file=tqdm_capture)
+                        image = pipe(
+                            prompt=entire_prompt,
+                            height=side_y,
+                            width=side_x,
+                            num_inference_steps=int(float(steps)),
+                            negative_prompt=negative_prompt,
+                        ).images[0]
                 image = image.resize((1920, 1080))
 
                 del pipe
@@ -197,7 +207,7 @@ class ImageGenerator:
                 return image
             except Exception as e:
                 logging.error(
-                    f"Attempt {attempt}: Image generation failed with error: {e}"
+                    f"Error generating image: {e}\n\nStack trace:\n{traceback.format_exc()}"
                 )
                 del pipe
                 import gc
@@ -210,6 +220,11 @@ class ImageGenerator:
                     raise RuntimeError(
                         "Maximum retries reached, image generation failed"
                     )
+            finally:
+                # Don't forget to restore the original stdout after the image generation is done
+                # sys.stdout = original_stdout
+                sys.stderr = original_stderr
+
 
     def get_available_models(self):
         config = AppConfig()

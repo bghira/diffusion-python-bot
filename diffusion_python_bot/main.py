@@ -1,4 +1,4 @@
-import os
+import sys
 import datetime
 import discord
 import asyncio
@@ -7,11 +7,17 @@ import traceback
 from discord.ext import commands
 from PIL import Image
 from io import BytesIO
-from diffusion_python_bot.classes.app_config import AppConfig
-from diffusion_python_bot.classes.image_generator import ImageGenerator
-from diffusion_python_bot.classes.message_handler import MessageHandler
-from diffusion_python_bot.user_commands import UserCommands
-from diffusion_python_bot.utils import _get_project_meta
+from classes.app_config import AppConfig
+from classes.image_generator import ImageGenerator
+from classes.message_handler import MessageHandler
+from user_commands import UserCommands
+from utils import _get_project_meta
+from classes.discord_progress_bar import DiscordProgressBar
+from classes.tqdm_capture import TqdmCapture
+import logging
+
+# Set up the logging configuration
+logging.basicConfig(level=logging.INFO)
 
 pkg_meta = _get_project_meta()
 pkg_name = str(pkg_meta["name"])
@@ -86,19 +92,23 @@ async def generate_image(ctx, *, prompt):
             not hasattr(bot, "image_generation_task")
             or bot.image_generation_task.done()
         ):
+            logging.info("Create bot loop.")
             bot.image_generation_task = bot.loop.create_task(
                 generate_image_from_queue()
             )
+            logging.info("Bot is done creating.")
     except Exception as e:
         await ctx.send(
             f"Error generating image: {e}\n\nStack trace:\n{traceback.format_exc()}"
         )
 
 
-# New function to process the prompts in the queue and generate images one at a time
 async def generate_image_from_queue():
     while not image_queue.empty():
         ctx, prompt = await image_queue.get()
+        logging.info("Create progress bar...")
+        progress_bar = DiscordProgressBar(ctx=ctx, total_steps=100, original_stdout=sys.stdout)
+        tqdm_file = TqdmCapture(progress_bar, bot.loop, sys.stdout, sys.stderr)
         await ctx.send("Begin processing queue item: " + prompt)
         user_id = ctx.author.id
         async with appconfig_lock:
@@ -120,6 +130,7 @@ async def generate_image_from_queue():
             # Run the image generation in an executor
             await ctx.send("Begin image generation: " + prompt)
             async with image_queue_lock:
+                logging.info("Begin capture...")
                 image = await bot.loop.run_in_executor(
                     None,
                     image_generator.generate_image,
@@ -129,6 +140,7 @@ async def generate_image_from_queue():
                     negative_prompt,
                     steps,
                     positive_prompt,
+                    tqdm_file,
                 )
             await ctx.send("Begin image processing: " + prompt)
             buffer = BytesIO()
