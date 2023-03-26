@@ -18,8 +18,10 @@ def traverse_project(path: str) -> str:
     content = ''
     for root, _, filenames in os.walk(path):
         for filename in filenames:
+            print("found: " + filename)
             logging.info("found: " + filename)
             if filename.endswith('.py'):
+                print("reading: " + filename)
                 logging.info(filename)
                 file_path = Path(root) / filename
                 with open(file_path, 'r') as file:
@@ -76,7 +78,7 @@ def main(local_only: bool = False) -> None:
         local_only (bool, optional): Flag to control whether to dump the prompt to stdout or send it to the API.
                                      Defaults to False.
     """
-    project_path = "C:/Users/jackd/PycharmProjects/diffusion-python-bot"
+    project_path = "diffusion-python-bot"
     project_content = traverse_project(project_path)
     tokenized_content = tokenize(project_content)
 
