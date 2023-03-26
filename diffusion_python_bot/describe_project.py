@@ -73,7 +73,8 @@ def main(local_only: bool = False) -> None:
         local_only (bool, optional): Flag to control whether to dump the prompt to stdout or send it to the API.
                                      Defaults to False.
     """
-    project_path = "C:/Users/jackd/PycharmProjects/diffusion-python-bot/diffusion_python_bot"
+    ## TODO dev - you may beed to localize this path for success
+    project_path = "diffusion-python-bot/diffusion_python_bot"
     project_content = traverse_project(project_path)
     tokenized_content = tokenize(project_content)
 
