@@ -65,6 +65,28 @@ def get_tldr(prompt: str) -> str:
     return response.choices[0].text.strip()
 
 
+def process_project(project_path):
+    project_info = {'path': project_path}
+    project_content = traverse_project(project_path)
+
+    # Get TL;DR summary using OpenAI GPT-3 API
+    tldr = get_tldr(project_content)
+    project_info['tldr'] = tldr
+
+    # TODO: Add code to extract other project information
+    # such as....?
+
+    # Write README file
+    write_readme(project_info)
+
+
+def write_readme(project_info):
+    readme_path = os.path.join(project_info['path'], 'README.md')
+    with open(readme_path, 'w') as f:
+        f.write("# {name}\n".format(**project_info))
+        f.write("{tldr}\n".format(**project_info))
+
+
 def main(local_only: bool = False) -> None:
     """
     Main function to run the script.
