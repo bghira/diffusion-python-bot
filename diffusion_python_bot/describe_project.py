@@ -7,7 +7,7 @@ from importlib import util
 
 # Register an autoloader for classes
 def autoload(classname):
-    module_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), '..', 'classes', classname + '.py')
+    module_path = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'classes', classname + '.py')
     if os.path.exists(module_path):
         module_name = os.path.splitext(os.path.basename(module_path))[0]
         module_spec = importlib.util.spec_from_file_location(module_name, module_path)
@@ -25,12 +25,12 @@ with open(output_file, 'w') as f:
 for filename in os.listdir(directory):
     if filename.endswith('.py'):
         classname = os.path.splitext(filename)[0]
+        print(classname)
         with open(os.path.join(directory, filename), 'r') as f:
             module = importlib.import_module(f'.{classname}', 'classes')
             class_signatures = f"Class: {classname}\n"
             for method_name, method in inspect.getmembers(module, predicate=inspect.isfunction):
-
-            class_signatures = f"Class: {classname}\n"
+                class_signatures = f"Class: {classname}\n"
             for method_name, method in inspect.getmembers(module, predicate=inspect.isfunction):
                 if method.__module__ == classname:
                     parameters = inspect.signature(method).parameters
