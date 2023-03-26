@@ -4,7 +4,9 @@ import json
 import os
 from io import BytesIO
 
+
 class AppConfig:
+
     def __init__(self):
         self.config_path = "config/config.json"
         self.example_config_path = "config/example.json"
@@ -21,6 +23,7 @@ class AppConfig:
 
     def get_discord_api_key(self):
         return self.config['discord_api']['api_key']
+
     def get_huggingface_api_key(self):
         return self.config['huggingface_api'].get('api_key', None)
 
@@ -42,6 +45,8 @@ class AppConfig:
         self.config['users'][user_id][setting_key] = value
         with open(self.config_path, "w") as config_file:
             json.dump(self.config, config_file)
+
     def get_user_setting(self, user_id, setting_key, default_value=None):
         user_id = str(user_id)
-        return self.config['users'].get(user_id, {}).get(setting_key, default_value)
+        return self.config['users'].get(user_id,
+                                        {}).get(setting_key, default_value)
