@@ -2,7 +2,9 @@ import os
 import openai
 from pathlib import Path
 from classes.app_config import AppConfig
-
+import nltk
+from nltk.tokenize import word_tokenize, sent_tokenize
+nltk.download('punkt')
 
 # Function to traverse the project and read content
 def traverse_project(path):
@@ -18,7 +20,15 @@ def traverse_project(path):
 
 # Function to tokenize the content (use your preferred tokenizer)
 def tokenize(content):
-    # TODO -- choose and get tokenizer, NLTK seems like a good first choice
+
+    # Read the contents of the file
+    with open(file_name, 'r') as file:
+        text = file.read()
+
+    # Tokenize the text into sentences and words
+    sentences = sent_tokenize(text)
+    words = [word_tokenize(sentence) for sentence in sentences]
+
     return content
 
 
