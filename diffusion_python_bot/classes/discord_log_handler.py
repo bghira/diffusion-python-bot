@@ -8,6 +8,6 @@ class DiscordLogHandler(logging.Handler):
     def emit(self, record):
         try:
             msg = self.format(record)
-            asyncio.create_task(self.ctx.send(f"Debug: {msg}"))
+            # asyncio.create_task(self.ctx.send(f"Debug: {msg}"))
         except Exception:
             self.handleError(record)

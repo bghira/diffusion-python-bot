@@ -11,11 +11,9 @@ class TqdmCapture:
     def write(self, s: str):
         test_string = s.strip()
         if test_string != "":
-            self.original_stderr.write(f"tqdm stderrput: \"" + s.strip() + "\"\n")  # Add this line
             match = re.search(r'\b(\d+)%\|', s)
             if match:
                 progress = int(match.group(1))
-                self.original_stdout.write(f"Captured progress: {progress}\n")  # Add this line
                 asyncio.run_coroutine_threadsafe(self.progress_bar.update_progress_bar(progress), self.loop)
 
     def flush(self):

@@ -31,12 +31,12 @@ class UserCommands(commands.Cog):
             )
 
         message = (
-            f"**User ID:** {user_id}\n"
-            f"**Model ID:** {model_id}\n"
-            f"**Steps:** {steps}\n"
-            f"**Negative Prompt:** {negative_prompt}\n"
-            f"**Positive Prompt:** {positive_prompt}\n"
-            f"**Resolution:** {resolution['width']}x{resolution['height']}"
+            f"**Hello,** {ctx.author.mention}! Here are your current settings:\n"
+            f"🟠 **Model ID**: `{model_id}`\n❓ Change using **!setmodel [model]**, out of the list from **!listmodels**\n"
+            f"🟠 **Steps**: `{steps}`\n❓ This represents how many denoising iterations the model will do on your image. Less is more.\n"
+            f"🟠 **Negative Prompt:**:\n➡️    `{negative_prompt}`\n❓ Images featuring these keywords are less likely to be generated. Set via `!negative`.\n"
+            f"🟠 **Positive Prompt:**:\n➡️    `{positive_prompt}`\n❓ Added to the end of every prompt, which has a limit of 77 tokens. This can become truncated. Set via `!positive`.\n"
+            f"🟠 **Resolution:** `{resolution['width']}x{resolution['height']}`\n❓ Lower resolutions render more quickly, and has a relationship with `steps` that can really influence the output. See **!help resolution** for more information."
         )
 
         await ctx.send(message)

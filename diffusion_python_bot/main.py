@@ -1,6 +1,7 @@
 import sys
 import datetime
 import discord
+from discord import Thread
 import asyncio
 from asyncio import Lock
 import traceback
@@ -16,9 +17,6 @@ from classes.discord_progress_bar import DiscordProgressBar
 from classes.tqdm_capture import TqdmCapture
 import logging
 
-# Set up the logging configuration
-logging.basicConfig(level=logging.INFO)
-
 pkg_meta = _get_project_meta()
 pkg_name = str(pkg_meta["name"])
 # The short X.Y version
@@ -27,17 +25,31 @@ pkg_version = str(pkg_meta["version"])
 config = AppConfig()
 TOKEN = config.get_discord_api_key()
 
+intents = discord.Intents.default()
+intents.typing = False
+intents.presences = False
+intents.message_content = True
+
+from classes.discord_wrapper import DiscordWrapper
+bot = DiscordWrapper(command_prefix="!", intents=intents)
+
+# Configure the root logger to equate Discord's logging settings.
+discord_logger = logging.getLogger('discord')
+# Add a file handler to log to a file
+file_handler = logging.FileHandler(filename='main.log', encoding='utf-8', mode='w')
+file_handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))
+discord_logger.addHandler(file_handler)
+logging.getLogger().setLevel(logging.DEBUG)
+logging.getLogger().handlers = discord_logger.handlers
+
+logging.basicConfig(level=logging.INFO)
+
 # Threaded conversation handling
 image_queue = asyncio.Queue()
 appconfig_lock = asyncio.Lock()
 image_queue_lock = Lock()
 
-intents = discord.Intents.default()
-intents.typing = False
-intents.presences = False
-
-bot = commands.Bot(command_prefix="!", intents=intents)
-bot.add_cog(UserCommands(bot, appconfig_lock, config))
+asyncio.run(bot.add_cog(UserCommands(bot, appconfig_lock, config)))
 image_generator = ImageGenerator(image_queue_lock)
 message_handler = MessageHandler(
     image_generator=image_generator,
@@ -50,8 +62,8 @@ message_handler.set_bot(bot)
 
 @bot.event
 async def on_ready():
-    print(f"{bot.user} has connected to Discord!")
-    print(f"Server(s) connected: {[guild.name for guild in bot.guilds]}")
+    logging.info(f"{bot.user} has connected to Discord!")
+    logging.info(f"Server(s) connected: {[guild.name for guild in bot.guilds]}")
 
 
 async def send_large_message(ctx, text, max_chars=2000):
@@ -66,7 +78,7 @@ async def send_large_message(ctx, text, max_chars=2000):
         if len(buffer) + len(line) + 1 > max_chars:
             if not first_message:
                 first_message = await ctx.send(buffer)
-                thread = await first_message.create_thread(name="Model List")
+                thread = await first_message.channel.create_thread(name="Model List")
             else:
                 await thread.send_message(buffer)
             buffer = ""
@@ -82,11 +94,12 @@ async def ping(ctx):
 
 
 @bot.command(name="generate", help="Generates an image based on the given prompt.")
-async def generate_image(ctx, *, prompt):
+async def generate(ctx, *, prompt):
     try:
-        await ctx.send(f"Adding prompt to queue for processing: " + prompt)
+        print("Begin generate command coroutine.")
+        discord_first_message = await ctx.send(f"Adding prompt to queue for processing: " + prompt)
         # Put the context and prompt in a tuple before adding it to the queue
-        await image_queue.put((ctx, prompt))
+        await image_queue.put((ctx, prompt, discord_first_message))
         # Run the generate_image_from_queue function as a task, if not already running
         if (
             not hasattr(bot, "image_generation_task")
@@ -101,16 +114,20 @@ async def generate_image(ctx, *, prompt):
         await ctx.send(
             f"Error generating image: {e}\n\nStack trace:\n{traceback.format_exc()}"
         )
+        print("Ran into error when running generate command.")
 
 
 async def generate_image_from_queue():
     while not image_queue.empty():
-        ctx, prompt = await image_queue.get()
-        logging.info("Create progress bar...")
-        progress_bar = DiscordProgressBar(ctx=ctx, total_steps=100, original_stdout=sys.stdout)
+        ctx, prompt, discord_first_message = await image_queue.get()
+        logging.info("Create progress bar using {discord_first_message}...")
+        await discord_first_message.edit(content="Begin processing queue item: " + prompt)
+        progress_bar = DiscordProgressBar(ctx=ctx, total_steps=100, original_stdout=sys.stdout, progress_message=discord_first_message)
         tqdm_file = TqdmCapture(progress_bar, bot.loop, sys.stdout, sys.stderr)
-        await ctx.send("Begin processing queue item: " + prompt)
+        logging.info("Editing initial message.")
+        await discord_first_message.edit(content="Begin image generation: " + prompt)
         user_id = ctx.author.id
+        await ctx.message.delete()
         async with appconfig_lock:
             user_config = config.get_user_config(user_id)
             steps = config.get_user_setting(user_id, "steps", 50)
@@ -128,7 +145,6 @@ async def generate_image_from_queue():
             model_id = user_config.get("model", None)
         try:
             # Run the image generation in an executor
-            await ctx.send("Begin image generation: " + prompt)
             async with image_queue_lock:
                 logging.info("Begin capture...")
                 image = await bot.loop.run_in_executor(
@@ -142,12 +158,13 @@ async def generate_image_from_queue():
                     positive_prompt,
                     tqdm_file,
                 )
-            await ctx.send("Begin image processing: " + prompt)
             buffer = BytesIO()
             image.save(buffer, "PNG")
             buffer.seek(0)
             message = (
-                "**Prompt:** "
+                "**Requested by:** "
+                + str(ctx.author.mention)
+                + "\n**Prompt:** "
                 + str(prompt)
                 + "\n**Model:** "
                 + str(model_id)
@@ -158,9 +175,17 @@ async def generate_image_from_queue():
                 + "\n**Steps:** "
                 + str(steps)
             )
-            await ctx.send(
+            if isinstance(ctx.message.channel, Thread):
+                thread = ctx.message.channel
+            else:
+                await discord_first_message.edit(content="Prompt by **" + ctx.author.name + "**: `" + prompt + "`")
+                thread = await discord_first_message.create_thread(name=prompt[:97] + '...', auto_archive_duration=60) # You can change the duration (in minutes) as needed
+            await thread.send(
                 content=message, file=discord.File(buffer, "generated_image.png")
             )
+            await discord_first_message.delete()
+        except discord.NotFound:
+            logging.info("Discord message was already deleted, probably.")
         except Exception as e:
             error_message = (
                 f"Error generating image: {e}\n\nStack trace:\n{traceback.format_exc()}"
@@ -379,13 +404,14 @@ async def on_message(message):
     # If the message is from the bot itself, ignore it
     if message.author == bot.user:
         return
+    print("Actually we did hit it: " + str(message))
     await message_handler.handle_message(message)
 
 
 def main():
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{timestamp}] bot version {pkg_version}...")
-    print(f"[{timestamp}] Starting bot...")
+    logging.info(f"[{timestamp}] bot version {pkg_version}...")
+    logging.info(f"[{timestamp}] Starting bot...")
     bot.run(TOKEN)
 
 

@@ -1,23 +1,22 @@
 # classes/image_generator.py
-import numpy as np
-import textwrap
-from torchvision.transforms.functional import pad
-import sys
-import torch
-import time
-from diffusers import StableDiffusionPipeline, StableDiffusionImageVariationPipeline
-import requests
-from .pytorch_stderr_filter import FilteringStderrWrapper
-from huggingface_hub import hf_hub_url, HfApi, snapshot_download
-from .app_config import AppConfig
-from PIL import Image
-import logging
 import os
-from io import BytesIO
-from transformers import AutoModel
+import sys
+import logging
+
+# Tell TensorFlow to be quiet.
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+
+# Import the library
+import torch
+from torchvision.transforms.functional import pad
+from diffusers import StableDiffusionPipeline, StableDiffusionImageVariationPipeline
+
+import time
+from .app_config import AppConfig
 from asyncio import Lock
 from tqdm import tqdm
 import traceback
+
 
 class ImageGenerator:
     resolutions = [
@@ -52,7 +51,7 @@ class ImageGenerator:
             pretrained_model_name_or_path=model_id, torch_dtype=self.torch_dtype
         )
         logging.info(
-            "Using attention scaling, because a variation is being crafted! Safety first!!"
+            "Using attention scaling, because a variation is being crafted! This will make generation run more slowly, but it will be less likely to run out of memory."
         )
         pipe.enable_sequential_cpu_offload()
         pipe.enable_attention_slicing(1)
@@ -95,6 +94,7 @@ class ImageGenerator:
         height: int,
         input_image,
         steps: int,
+        tqdm_capture,
         guidance_scale=7.5,
         use_attention_scaling=False,
     ):
@@ -121,13 +121,14 @@ class ImageGenerator:
             input_image, (input_image.size[0] // 2, input_image.size[1] // 2)
         )
         # Generate image variations
-        generated_images = pipe(
-            width=width,
-            height=height,
-            image=input_image,
-            guidance_scale=guidance_scale,
-            num_inference_steps=int(float(steps)),
-        ).images
+        with tqdm(total=steps, ncols=100, file=tqdm_capture) as pbar:
+            generated_images = pipe(
+                width=width,
+                height=height,
+                image=input_image,
+                guidance_scale=guidance_scale,
+                num_inference_steps=int(float(steps)),
+            ).images
         del pipe
         return generated_images
 
@@ -184,10 +185,7 @@ class ImageGenerator:
             try:
                 logging.info(f"Attempt {attempt}: Generating image...")
                 with torch.no_grad():
-                    with tqdm(
-                        total=steps, ncols=100, file=tqdm_capture
-                    ) as pbar:
-                        # pbar.external_write_mode(file=tqdm_capture)
+                    with tqdm(total=steps, ncols=100, file=tqdm_capture) as pbar:
                         image = pipe(
                             prompt=entire_prompt,
                             height=side_y,
@@ -224,7 +222,6 @@ class ImageGenerator:
                 # Don't forget to restore the original stdout after the image generation is done
                 # sys.stdout = original_stdout
                 sys.stderr = original_stderr
-
 
     def get_available_models(self):
         config = AppConfig()
