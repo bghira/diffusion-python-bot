@@ -102,7 +102,7 @@ class ImageGenerator:
         guidance_scale=7.5,
         use_attention_scaling=False,
     ):
-        input_image = input_image.resize((512, 384))
+        # input_image = input_image.resize((512, 384))
         logging.info("Initializing image variation generation pipeline...")
         scaling_factor = self.get_scaling_factor(width, height, self.resolutions)
         if int(steps) > int(scaling_factor):
@@ -197,7 +197,7 @@ class ImageGenerator:
                             num_inference_steps=int(float(steps)),
                             negative_prompt=negative_prompt,
                         ).images[0]
-                image = image.resize((1920, 1080))
+                # image = image.resize((1920, 1080))
 
                 del pipe
                 import gc
