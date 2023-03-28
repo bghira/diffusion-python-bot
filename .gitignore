@@ -1,5 +1,5 @@
 # .gitignore
-config/config.json
+diffusion_python_bot/config/config.json
 
 # Python artifacts
 __pycache__/
