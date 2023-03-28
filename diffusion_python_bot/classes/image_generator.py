@@ -30,6 +30,9 @@ class ImageGenerator:
         {"width": 1024, "height": 576, "scaling_factor": 40},
         {"width": 1152, "height": 648, "scaling_factor": 34},
         {"width": 1280, "height": 720, "scaling_factor": 30},
+        {"width": 1920, "height": 1080, "scaling_factor": 30},
+        {"width": 3840, "height": 2160, "scaling_factor": 30},
+        {"width": 7680, "height": 4320, "scaling_factor": 30}
         # Add more resolutions if needed
     ]
 
@@ -45,7 +48,7 @@ class ImageGenerator:
         import gc
 
         gc.collect()
-        torch.cuda.empty_cache()
+        # torch.cuda.empty_cache()
         logging.info("Generating a new variation pipe...")
         pipe = StableDiffusionImageVariationPipeline.from_pretrained(
             pretrained_model_name_or_path=model_id, torch_dtype=self.torch_dtype
@@ -66,7 +69,7 @@ class ImageGenerator:
         import gc
 
         gc.collect()
-        torch.cuda.empty_cache()
+        # torch.cuda.empty_cache()
         logging.info("Generating a new pipe...")
         use_attention_scaling = False
         if use_attention_scaling is False:
@@ -116,7 +119,7 @@ class ImageGenerator:
             use_attention_scaling = True
         pipe = self.get_variation_pipe(
             "lambdalabs/sd-image-variations-diffusers",
-            use_attention_scaling=use_attention_scaling,
+            use_attention_scaling=False,
         )
         input_image = pad(
             input_image, (input_image.size[0] // 2, input_image.size[1] // 2)
@@ -144,7 +147,6 @@ class ImageGenerator:
         tqdm_capture,
     ):
         logging.info("Initializing image generation pipeline...")
-        use_attention_scaling = False
         max_retries = retry_delay = 5
         if resolution is not None:
             scaling_factor = self.get_scaling_factor(
@@ -162,12 +164,13 @@ class ImageGenerator:
                     + " has a pixel count greater than threshold. Using attention scaling expects to take 30 seconds."
                 )
                 use_attention_scaling = True
-                if steps > scaling_factor:
-                    steps = scaling_factor
+                # if steps > scaling_factor:
+                #     steps = scaling_factor
             side_x = resolution["width"]
             side_y = resolution["height"]
         else:
             side_x = side_y = None
+        use_attention_scaling = False
         logging.info("Set custom resolution")
         pipe = self.get_pipe(model_id, use_attention_scaling)
         logging.info("Copied pipe to the local context")
@@ -200,7 +203,7 @@ class ImageGenerator:
                 import gc
 
                 gc.collect()
-                torch.cuda.empty_cache()
+                # torch.cuda.empty_cache()
 
                 logging.info("Image generation successful!")
                 return image
