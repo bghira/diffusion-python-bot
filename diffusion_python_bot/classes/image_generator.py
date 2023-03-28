@@ -34,7 +34,7 @@ class ImageGenerator:
     ]
 
     def __init__(
-        self, shared_queue_lock: Lock, device="cuda", torch_dtype=torch.float16
+        self, shared_queue_lock: Lock, device="cuda", torch_dtype=torch.float32
     ):
         self.device = torch.device(device)
         self.torch_dtype = torch_dtype
@@ -50,11 +50,11 @@ class ImageGenerator:
         pipe = StableDiffusionImageVariationPipeline.from_pretrained(
             pretrained_model_name_or_path=model_id, torch_dtype=self.torch_dtype
         )
-        logging.info(
-            "Using attention scaling, because a variation is being crafted! This will make generation run more slowly, but it will be less likely to run out of memory."
-        )
-        pipe.enable_sequential_cpu_offload()
-        pipe.enable_attention_slicing(1)
+        # logging.info(
+        #     "Using attention scaling, because a variation is being crafted! This will make generation run more slowly, but it will be less likely to run out of memory."
+        # )
+        # pipe.enable_sequential_cpu_offload()
+        # pipe.enable_attention_slicing(1)
         # torch.backends.cudnn.benchmark = True
         # torch.backends.cudnn.enabled = True
         pipe.safety_checker = lambda images, clip_input: (images, False)
@@ -68,6 +68,7 @@ class ImageGenerator:
         gc.collect()
         torch.cuda.empty_cache()
         logging.info("Generating a new pipe...")
+        use_attention_scaling = False
         if use_attention_scaling is False:
             pipe = StableDiffusionPipeline.from_pretrained(
                 pretrained_model_name_or_path=model_id, torch_dtype=self.torch_dtype
