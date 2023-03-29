@@ -51,7 +51,7 @@ logging.basicConfig(level=logging.INFO)
 image_queue = Queue()
 appconfig_lock = Lock()
 image_queue_lock = Lock()
-image_generation_semaphore = Semaphore(concurrent_slots)
+image_generation_semaphore = Semaphore(1)
 
 asyncio.run(bot.add_cog(UserCommands(bot, appconfig_lock, config)))
 image_generator = ImageGenerator(image_queue_lock)
@@ -107,7 +107,10 @@ async def generate_image_from_queue():
         logging.info("Editing initial message.")
         await discord_first_message.edit(content="Begin image generation: " + prompt)
         user_id = ctx.author.id
-        await ctx.message.delete()
+        try:
+            await ctx.message.delete()
+        except:
+            logging.info("Message was already deleted. Dang.")
         async with appconfig_lock:
             user_config = config.get_user_config(user_id)
             steps = config.get_user_setting(user_id, "steps", 50)
@@ -126,21 +129,19 @@ async def generate_image_from_queue():
         try:
             # Run the image generation in an executor
             # Acquire the semaphore
-            await image_generation_semaphore.acquire()
+            # await image_generation_semaphore.acquire()
             logging.info("Begin capture...")
-            import concurrent
-            with concurrent.futures.ThreadPoolExecutor(max_workers=concurrent_slots) as pool:
-                image = await bot.loop.run_in_executor(
-                    pool,
-                    image_generator.generate_image,
-                    prompt,
-                    model_id,
-                    resolution,
-                    negative_prompt,
-                    steps,
-                    positive_prompt,
-                    tqdm_file,
-                )
+            image = await bot.loop.run_in_executor(
+                None,
+                image_generator.generate_image,
+                prompt,
+                model_id,
+                resolution,
+                negative_prompt,
+                steps,
+                positive_prompt,
+                tqdm_file,
+            )
             buffer = BytesIO()
             image.save(buffer, "PNG")
             buffer.seek(0)
@@ -415,7 +416,6 @@ async def on_message(message):
     # If the message is from the bot itself, ignore it
     if message.author == bot.user:
         return
-    print("Actually we did hit it: " + str(message))
     await message_handler.handle_message(message)
 
 

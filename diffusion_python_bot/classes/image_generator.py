@@ -42,6 +42,8 @@ class ImageGenerator:
         self.torch_dtype = torch_dtype
         self.lock = shared_queue_lock
         self.config = AppConfig()
+        self.model = None
+        self.pipe = None
 
     def get_variation_pipe(self, model_id, use_attention_scaling=False):
         logging.info("Clearing the CUDA cache...")
@@ -67,7 +69,11 @@ class ImageGenerator:
     def get_pipe(self, model_id, use_attention_scaling=False):
         logging.info("Clearing the CUDA cache...")
         import gc
-
+        if self.pipe and self.model_id == model_id:
+            # Return the current pipe if we're using the same model.
+            return self.pipe
+        # Create a new pipe and clean the cache.
+        self.model_id = model_id
         gc.collect()
         torch.cuda.empty_cache()
         logging.info("Generating a new pipe...")
@@ -133,7 +139,6 @@ class ImageGenerator:
                 guidance_scale=guidance_scale,
                 num_inference_steps=int(float(steps)),
             ).images
-        del pipe
         return generated_images
 
     def generate_image(
