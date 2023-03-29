@@ -69,9 +69,8 @@ class ImageGenerator:
         import gc
 
         gc.collect()
-        # torch.cuda.empty_cache()
+        torch.cuda.empty_cache()
         logging.info("Generating a new pipe...")
-        use_attention_scaling = False
         if use_attention_scaling is False:
             pipe = StableDiffusionPipeline.from_pretrained(
                 pretrained_model_name_or_path=model_id, torch_dtype=self.torch_dtype
