@@ -30,6 +30,8 @@ class MessageHandler:
         self.bot = bot
 
     async def handle_message(self, message):
+        if message.author.bot:
+            return
         in_my_thread = False
         is_in_thread = False
         if isinstance(message.channel, discord.Thread):
