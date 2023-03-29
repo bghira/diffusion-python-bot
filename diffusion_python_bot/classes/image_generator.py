@@ -17,7 +17,6 @@ from asyncio import Lock
 from tqdm import tqdm
 import traceback
 
-
 class ImageGenerator:
     resolutions = [
         {"width": 128, "height": 96, "scaling_factor": 100},
@@ -124,6 +123,7 @@ class ImageGenerator:
         input_image = pad(
             input_image, (input_image.size[0] // 2, input_image.size[1] // 2)
         )
+        
         # Generate image variations
         with tqdm(total=steps, ncols=100, file=tqdm_capture) as pbar:
             generated_images = pipe(

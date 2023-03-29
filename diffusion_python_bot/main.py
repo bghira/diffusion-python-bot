@@ -3,7 +3,7 @@ import datetime
 import discord
 from discord import Thread
 import asyncio
-from asyncio import Lock
+from asyncio import ( Lock, Queue, Semaphore )
 import traceback
 from discord.ext import commands
 from PIL import Image
@@ -23,6 +23,8 @@ pkg_name = str(pkg_meta["name"])
 pkg_version = str(pkg_meta["version"])
 
 config = AppConfig()
+# How many concurrent slots to run when generating images.
+concurrent_slots = config.get_concurrent_slots()
 TOKEN = config.get_discord_api_key()
 
 intents = discord.Intents.default()
@@ -45,9 +47,10 @@ logging.getLogger().handlers = discord_logger.handlers
 logging.basicConfig(level=logging.INFO)
 
 # Threaded conversation handling
-image_queue = asyncio.Queue()
-appconfig_lock = asyncio.Lock()
+image_queue = Queue()
+appconfig_lock = Lock()
 image_queue_lock = Lock()
+image_generation_semaphore = Semaphore(concurrent_slots)
 
 asyncio.run(bot.add_cog(UserCommands(bot, appconfig_lock, config)))
 image_generator = ImageGenerator(image_queue_lock)
@@ -93,30 +96,6 @@ async def ping(ctx):
     await ctx.send("Pong!")
 
 
-@bot.command(name="generate", help="Generates an image based on the given prompt.")
-async def generate(ctx, *, prompt):
-    try:
-        print("Begin generate command coroutine.")
-        discord_first_message = await ctx.send(f"Adding prompt to queue for processing: " + prompt)
-        # Put the context and prompt in a tuple before adding it to the queue
-        await image_queue.put((ctx, prompt, discord_first_message))
-        # Run the generate_image_from_queue function as a task, if not already running
-        if (
-            not hasattr(bot, "image_generation_task")
-            or bot.image_generation_task.done()
-        ):
-            logging.info("Create bot loop.")
-            bot.image_generation_task = bot.loop.create_task(
-                generate_image_from_queue()
-            )
-            logging.info("Bot is done creating.")
-    except Exception as e:
-        await ctx.send(
-            f"Error generating image: {e}\n\nStack trace:\n{traceback.format_exc()}"
-        )
-        print("Ran into error when running generate command.")
-
-
 async def generate_image_from_queue():
     while not image_queue.empty():
         ctx, prompt, discord_first_message = await image_queue.get()
@@ -145,6 +124,8 @@ async def generate_image_from_queue():
             model_id = user_config.get("model", None)
         try:
             # Run the image generation in an executor
+            # Acquire the semaphore
+            await image_generation_semaphore.acquire()
             async with image_queue_lock:
                 logging.info("Begin capture...")
                 image = await bot.loop.run_in_executor(
@@ -193,7 +174,35 @@ async def generate_image_from_queue():
             await send_large_message(ctx, f"Error generating image: {error_message}")
         finally:
             image_queue.task_done()
+            image_generation_semaphore.release()
 
+@bot.command(name="generate", help="Generates an image based on the given prompt.")
+async def generate(ctx, *, prompt):
+    try:
+        print("Begin generate command coroutine.")
+        discord_first_message = await ctx.send(f"Adding prompt to queue for processing: " + prompt)
+        # Put the context and prompt in a tuple before adding it to the queue
+        await image_queue.put((ctx, prompt, discord_first_message))
+
+        # Get the number of concurrent slots
+        concurrent_slots = config.get_concurrent_slots()
+
+        # Check if there are any running tasks
+        if not hasattr(bot, "image_generation_tasks"):
+            bot.image_generation_tasks = []
+
+        # Remove any completed tasks
+        bot.image_generation_tasks = [t for t in bot.image_generation_tasks if not t.done()]
+
+        # If there are fewer tasks than allowed slots, create new tasks
+        while len(bot.image_generation_tasks) < concurrent_slots:
+            task = bot.loop.create_task(generate_image_from_queue())
+            bot.image_generation_tasks.append(task)
+
+    except Exception as e:
+        await ctx.send(
+            f"Error generating image: {e}\n\nStack trace:\n{traceback.format_exc()}"
+        )
 
 # Set model command with AppConfig lock
 @bot.command(name="setmodel", help="Set the default model for the user.")
