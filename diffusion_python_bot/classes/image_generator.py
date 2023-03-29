@@ -41,6 +41,7 @@ class ImageGenerator:
         self.device = torch.device(device)
         self.torch_dtype = torch_dtype
         self.lock = shared_queue_lock
+        self.config = AppConfig()
 
     def get_variation_pipe(self, model_id, use_attention_scaling=False):
         logging.info("Clearing the CUDA cache...")
@@ -147,8 +148,10 @@ class ImageGenerator:
         tqdm_capture,
     ):
         logging.info("Initializing image generation pipeline...")
+        is_attn_enabled = self.config.get_attention_scaling_status()
+        use_attention_scaling = False
         max_retries = retry_delay = 5
-        if resolution is not None:
+        if resolution is not None and is_attn_enabled:
             scaling_factor = self.get_scaling_factor(
                 resolution["width"], resolution["height"], self.resolutions
             )
@@ -164,13 +167,14 @@ class ImageGenerator:
                     + " has a pixel count greater than threshold. Using attention scaling expects to take 30 seconds."
                 )
                 use_attention_scaling = True
-                # if steps > scaling_factor:
-                #     steps = scaling_factor
+                if steps > scaling_factor:
+                    steps = scaling_factor
+        side_x = self.config.get_max_resolution_width()
+        side_y = self.config.get_max_resolution_height()
+        if resolution["width"] < side_x:
             side_x = resolution["width"]
+        if resolution["height"] < side_y:
             side_y = resolution["height"]
-        else:
-            side_x = side_y = None
-        use_attention_scaling = False
         logging.info("Set custom resolution for model " + str(model_id))
         pipe = self.get_pipe(model_id, use_attention_scaling)
         logging.info("Copied pipe to the local context")
@@ -219,8 +223,7 @@ class ImageGenerator:
                 sys.stderr = original_stderr
 
     def get_available_models(self):
-        config = AppConfig()
-        base_dir = config.get_local_model_path()
+        base_dir = self.config.get_local_model_path()
 
         model_prefix = "models--"
         local_models = []
@@ -236,8 +239,6 @@ class ImageGenerator:
 
     # Helper to list / check a given resolution against the fold.
     async def list_available_resolutions(self, user_id=None, resolution=None):
-        config = AppConfig()
-
         current_resolution_indicator = " "
         if resolution is not None:
             width, height = map(int, resolution.split("x"))
@@ -251,7 +252,7 @@ class ImageGenerator:
         resolution_list = ""
         for r in self.resolutions:
             if user_id is not None:
-                user_resolution = config.get_user_setting(
+                user_resolution = self.config.get_user_setting(
                     user_id, "resolution", {"width": 800, "height": 456}
                 )
                 if user_resolution is not None:

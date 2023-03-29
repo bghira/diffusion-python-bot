@@ -26,8 +26,19 @@ class AppConfig:
             self.config = json.load(config_file)
     def get_concurrent_slots(self):
         return self.config.get("concurrent_slots", 1)
+
     def get_command_prefix(self):
         return self.config.get("cmd_prefix", "+")
+
+    def get_max_resolution_width(self):
+        return self.config.get("maxres_width", 800)
+
+    def get_max_resolution_height(self):
+        return self.config.get("maxres_height", 456)
+
+    def get_attention_scaling_status(self):
+        return self.config.get("use_attn_scaling", False)
+
     def get_discord_api_key(self):
         return self.config["discord_api"]["api_key"]
 
