@@ -46,20 +46,21 @@ class ImageGenerator:
         self.pipe = None
 
     def get_variation_pipe(self, model_id, use_attention_scaling=False):
-        logging.info("Clearing the CUDA cache...")
         import gc
-
         gc.collect()
-        # torch.cuda.empty_cache()
         logging.info("Generating a new variation pipe...")
         pipe = StableDiffusionImageVariationPipeline.from_pretrained(
             pretrained_model_name_or_path=model_id, torch_dtype=self.torch_dtype
         )
-        # logging.info(
-        #     "Using attention scaling, because a variation is being crafted! This will make generation run more slowly, but it will be less likely to run out of memory."
-        # )
-        # pipe.enable_sequential_cpu_offload()
-        # pipe.enable_attention_slicing(1)
+        if (use_attention_scaling):
+            logging.info(
+                "Using attention scaling, because a variation is being crafted! This will make generation run more slowly, but it will be less likely to run out of memory."
+            )
+            logging.info("Clearing the CUDA cache...")
+            torch.cuda.empty_cache()
+            pipe.enable_sequential_cpu_offload()
+            pipe.enable_attention_slicing(1)
+
         # torch.backends.cudnn.benchmark = True
         # torch.backends.cudnn.enabled = True
         pipe.safety_checker = lambda images, clip_input: (images, False)
@@ -68,34 +69,36 @@ class ImageGenerator:
 
     def get_pipe(self, model_id, use_attention_scaling=False):
         import gc
+        gc.collect()
         if self.pipe is not None and self.model_id == model_id:
             # Return the current pipe if we're using the same model.
             return self.pipe
+        if self.pipe is not None:
+            logging.info("We had a pipe, but it's for model " + str(self.model_id) + " - resetting with the new model, " + str(model_id))
         # Create a new pipe and clean the cache.
         logging.info("Clearing the CUDA cache...")
         self.model_id = model_id
-        gc.collect()
         torch.cuda.empty_cache()
         logging.info("Generating a new pipe...")
         if use_attention_scaling is False:
-            pipe = StableDiffusionPipeline.from_pretrained(
+            self.pipe = StableDiffusionPipeline.from_pretrained(
                 pretrained_model_name_or_path=model_id, torch_dtype=self.torch_dtype
             )
-            pipe.to(self.device)
+            self.pipe.to(self.device)
         elif use_attention_scaling:
             logging.info(
                 "Using attention scaling, because high resolution was selected! Safety first!!"
             )
-            pipe = StableDiffusionPipeline.from_pretrained(
-                pretrained_model_name_or_path=model_id, load_in_8bit=True
+            self.pipe = StableDiffusionPipeline.from_pretrained(
+                pretrained_model_name_or_path=model_id
             )
-            pipe.enable_sequential_cpu_offload()
-            pipe.enable_attention_slicing(1)
+            self.pipe.enable_sequential_cpu_offload()
+            self.pipe.enable_attention_slicing(1)
             # torch.backends.cudnn.benchmark = True
             # torch.backends.cudnn.enabled = True
-        pipe.safety_checker = lambda images, clip_input: (images, False)
+        self.pipe.safety_checker = lambda images, clip_input: (images, False)
         logging.info("Return the pipe...")
-        return pipe
+        return self.pipe
 
     def generate_image_variations(
         self,
@@ -107,7 +110,8 @@ class ImageGenerator:
         guidance_scale=7.5,
         use_attention_scaling=False,
     ):
-        # input_image = input_image.resize((512, 384))
+        if use_attention_scaling:
+            input_image = input_image.resize((512, 384))
         logging.info("Initializing image variation generation pipeline...")
         scaling_factor = self.get_scaling_factor(width, height, self.resolutions)
         if int(steps) > int(scaling_factor):
@@ -124,7 +128,7 @@ class ImageGenerator:
             use_attention_scaling = True
         pipe = self.get_variation_pipe(
             "lambdalabs/sd-image-variations-diffusers",
-            use_attention_scaling=False,
+            use_attention_scaling=use_attention_scaling,
         )
         input_image = pad(
             input_image, (input_image.size[0] // 2, input_image.size[1] // 2)
@@ -205,7 +209,7 @@ class ImageGenerator:
                             num_inference_steps=int(float(steps)),
                             negative_prompt=negative_prompt,
                         ).images[0]
-                # image = image.resize((1920, 1080))
+                image = image.resize((1920, 1080))
 
                 # torch.cuda.empty_cache()
 
