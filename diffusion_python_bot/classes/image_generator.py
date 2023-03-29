@@ -67,12 +67,12 @@ class ImageGenerator:
         return pipe
 
     def get_pipe(self, model_id, use_attention_scaling=False):
-        logging.info("Clearing the CUDA cache...")
         import gc
-        if self.pipe and self.model_id == model_id:
+        if self.pipe is not None and self.model_id == model_id:
             # Return the current pipe if we're using the same model.
             return self.pipe
         # Create a new pipe and clean the cache.
+        logging.info("Clearing the CUDA cache...")
         self.model_id = model_id
         gc.collect()
         torch.cuda.empty_cache()

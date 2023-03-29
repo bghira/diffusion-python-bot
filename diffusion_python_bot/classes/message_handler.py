@@ -42,7 +42,7 @@ class MessageHandler:
         # Whether we're in a thread the bot started.
         if is_in_thread and message.channel.owner_id == self.bot.user.id or message.author.bot:
             in_my_thread = True
-        if is_in_thread and message.content[0] == "*":
+        if is_in_thread and len(message.content) > 0 and message.content[0] == "*":
             # Respond to * as all bots.
             in_my_thread = True
         # Run only if it's in the bot's thread, and has no image attachments, and, has no "!" commands.
