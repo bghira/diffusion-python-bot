@@ -171,7 +171,7 @@ class ImageGenerator:
         else:
             side_x = side_y = None
         use_attention_scaling = False
-        logging.info("Set custom resolution")
+        logging.info("Set custom resolution for model " + str(model_id))
         pipe = self.get_pipe(model_id, use_attention_scaling)
         logging.info("Copied pipe to the local context")
         logging.info("REDIRECTING THE PRECIOUS, STDOUT... SORRY IF THAT UPSETS YOU")

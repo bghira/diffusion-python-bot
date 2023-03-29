@@ -26,6 +26,7 @@ config = AppConfig()
 # How many concurrent slots to run when generating images.
 concurrent_slots = config.get_concurrent_slots()
 TOKEN = config.get_discord_api_key()
+PREFIX = config.get_command_prefix()
 
 intents = discord.Intents.default()
 intents.typing = False
@@ -33,7 +34,7 @@ intents.presences = False
 intents.message_content = True
 
 from classes.discord_wrapper import DiscordWrapper
-bot = DiscordWrapper(command_prefix="!", intents=intents)
+bot = DiscordWrapper(command_prefix=PREFIX, intents=intents)
 
 # Configure the root logger to equate Discord's logging settings.
 discord_logger = logging.getLogger('discord')
@@ -121,7 +122,7 @@ async def generate_image_from_queue():
             resolution = config.get_user_setting(
                 user_id, "resolution", {"width": 800, "height": 456}
             )
-            model_id = user_config.get("model", None)
+            model_id = user_config.get("model", "andite/anything-v4.0")
         try:
             # Run the image generation in an executor
             # Acquire the semaphore

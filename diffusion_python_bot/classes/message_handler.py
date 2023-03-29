@@ -38,7 +38,7 @@ class MessageHandler:
             await self._handle_image_attachment(message)
 
         # Whether we're in a thread the bot started.
-        if is_in_thread and message.channel.owner_id == self.bot.user.id:
+        if is_in_thread and message.channel.owner_id == self.bot.user.id or message.author.bot:
             in_my_thread = True
 
         # Run only if it's in the bot's thread, and has no image attachments, and, has no "!" commands.
@@ -61,7 +61,7 @@ class MessageHandler:
         bot_mention = discord.utils.find(lambda mention: mention.id == self.bot.user.id, message.mentions)
 
         # Check if both conditions are met
-        if not bot_mention:
+        if not bot_mention or message.author.bot:
             # If not mentioned, just chill and return, bro.
             return
         # If the bot is mentioned, let's do some work, bro!

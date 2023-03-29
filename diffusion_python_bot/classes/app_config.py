@@ -26,7 +26,8 @@ class AppConfig:
             self.config = json.load(config_file)
     def get_concurrent_slots(self):
         return self.config.get("concurrent_slots", 1)
-
+    def get_command_prefix(self):
+        return self.config.get("cmd_prefix", "+")
     def get_discord_api_key(self):
         return self.config["discord_api"]["api_key"]
 
