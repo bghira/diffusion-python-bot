@@ -126,10 +126,11 @@ async def generate_image_from_queue():
             # Run the image generation in an executor
             # Acquire the semaphore
             await image_generation_semaphore.acquire()
-            async with image_queue_lock:
-                logging.info("Begin capture...")
+            logging.info("Begin capture...")
+            import concurrent
+            with concurrent.futures.ThreadPoolExecutor(max_workers=concurrent_slots) as pool:
                 image = await bot.loop.run_in_executor(
-                    None,
+                    pool,
                     image_generator.generate_image,
                     prompt,
                     model_id,
@@ -196,6 +197,7 @@ async def generate(ctx, *, prompt):
 
         # If there are fewer tasks than allowed slots, create new tasks
         while len(bot.image_generation_tasks) < concurrent_slots:
+            ctx.send("We actually have a concurrent slot free")
             task = bot.loop.create_task(generate_image_from_queue())
             bot.image_generation_tasks.append(task)
 

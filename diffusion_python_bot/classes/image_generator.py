@@ -36,7 +36,7 @@ class ImageGenerator:
     ]
 
     def __init__(
-        self, shared_queue_lock: Lock, device="cuda", torch_dtype=torch.float32
+        self, shared_queue_lock: Lock, device="cuda", torch_dtype=torch.float16
     ):
         self.device = torch.device(device)
         self.torch_dtype = torch_dtype
@@ -199,10 +199,6 @@ class ImageGenerator:
                         ).images[0]
                 # image = image.resize((1920, 1080))
 
-                del pipe
-                import gc
-
-                gc.collect()
                 # torch.cuda.empty_cache()
 
                 logging.info("Image generation successful!")
@@ -211,11 +207,6 @@ class ImageGenerator:
                 logging.error(
                     f"Error generating image: {e}\n\nStack trace:\n{traceback.format_exc()}"
                 )
-                del pipe
-                import gc
-
-                gc.collect()
-                torch.cuda.empty_cache()
                 if attempt < max_retries:
                     time.sleep(retry_delay)
                 else:
