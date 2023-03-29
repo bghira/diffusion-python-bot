@@ -198,7 +198,6 @@ async def generate(ctx, *, prompt):
 
         # If there are fewer tasks than allowed slots, create new tasks
         while len(bot.image_generation_tasks) < concurrent_slots:
-            await ctx.send("We actually have a concurrent slot free")
             task = bot.loop.create_task(generate_image_from_queue())
             bot.image_generation_tasks.append(task)
 
