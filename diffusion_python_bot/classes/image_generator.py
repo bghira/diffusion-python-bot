@@ -299,7 +299,7 @@ class ImageGenerator:
         header_row = "| " + " | ".join(ar.ljust(max_field_widths[ar]) for ar in grouped_resolutions.keys()) + " |\n"
         
         # Update the separator_row generation
-        separator_row = "+-" + "-+-".join("-" * (max_field_widths[ar] - 1) for ar in grouped_resolutions.keys()) + "-+\n"
+        separator_row = "+-" + "-+-".join("-" * (max_field_widths[ar]) for ar in grouped_resolutions.keys()) + "-+\n"
         
         resolution_list = header_row + separator_row
 
