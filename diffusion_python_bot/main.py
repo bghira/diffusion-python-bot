@@ -15,6 +15,7 @@ from user_commands import UserCommands
 from utils import _get_project_meta
 from classes.discord_progress_bar import DiscordProgressBar
 from classes.tqdm_capture import TqdmCapture
+from classes.image_uploader import ImageUploader
 import logging
 
 pkg_meta = _get_project_meta()
@@ -52,7 +53,9 @@ image_queue = Queue()
 appconfig_lock = Lock()
 image_queue_lock = Lock()
 image_generation_semaphore = Semaphore(1)
-
+image_uploader = ImageUploader(config)
+asyncio.run(image_uploader.set_bot(bot))
+asyncio.run(image_uploader.authorize())
 asyncio.run(bot.add_cog(UserCommands(bot, appconfig_lock, config)))
 image_generator = ImageGenerator(image_queue_lock)
 message_handler = MessageHandler(
@@ -60,6 +63,7 @@ message_handler = MessageHandler(
     config=config,
     shared_queue=image_queue,
     shared_queue_lock=image_queue_lock,
+    image_uploader=image_uploader
 )
 message_handler.set_bot(bot)
 
@@ -141,10 +145,9 @@ async def generate_image_from_queue():
                 steps,
                 positive_prompt,
                 tqdm_file,
+                user_config
             )
-            buffer = BytesIO()
-            image.save(buffer, "PNG")
-            buffer.seek(0)
+
             message = (
                 "**Requested by:** "
                 + str(ctx.author.mention)
@@ -164,8 +167,9 @@ async def generate_image_from_queue():
             else:
                 await discord_first_message.edit(content="Prompt by **" + ctx.author.name + "**: `" + prompt + "`")
                 thread = await discord_first_message.create_thread(name=prompt[:97] + '...', auto_archive_duration=60) # You can change the duration (in minutes) as needed
+            image_url = await image_uploader.put_from_pil(image, prompt)
             await thread.send(
-                content=message, file=discord.File(buffer, "generated_image.png")
+                content=message + '\n' + str(image_url)
             )
             await discord_first_message.delete()
         except discord.NotFound:
@@ -279,6 +283,23 @@ async def set_resolution(ctx, resolution=None):
             f"Default resolution set to {width}x{height} for user {ctx.author.name}."
         )
 
+@bot.command(
+    name="resize",
+    help="Set or get your default resize for generated images.\nDefault is **1** (no resizing) and max is **3**."
+)
+async def set_resize(ctx, resize:int = None):
+    user_id = ctx.author.id
+    async with appconfig_lock:
+        user_config = config.get_user_config(user_id)
+        if resize > 3:
+            resize_factor = user_config.get("resize_factor", 1)
+            await ctx.send(f'Your current resize factor is set to {resize_factor}.\nThe maximum is 3; {resize} is too high.\n')
+            return
+        user_config["resize_factor"] = int(resize)
+        config.set_user_config(user_id, user_config)
+        await ctx.send(
+            f"{ctx.author.mention}: Your resize factor is now set to {resize}."
+        )
 
 @bot.command(name="listmodels", help="Lists the available models from Hugging Face.")
 async def list_models(ctx):
@@ -401,15 +422,6 @@ async def remove_item_from_queue(queue, index):
             await new_queue.put(item)
 
     return new_queue, removed_item
-
-
-async def generate_variants(image_generator, input_image):
-    prompt = "a variation of the input image"
-    generated_image = image_generator.generate_image(
-        prompt, model_id="lambdalabs/sd-image-variations-diffusers", steps=25
-    )
-    return [generated_image]
-
 
 @bot.event
 async def on_message(message):

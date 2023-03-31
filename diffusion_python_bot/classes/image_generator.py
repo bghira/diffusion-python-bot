@@ -2,6 +2,8 @@
 import os
 import sys
 import logging
+from io import BytesIO
+from PIL import Image
 
 # Tell TensorFlow to be quiet.
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
@@ -161,6 +163,7 @@ class ImageGenerator:
         steps,
         positive_prompt,
         tqdm_capture,
+        user_config
     ):
         logging.info("Initializing image generation pipeline...")
         is_attn_enabled = self.config.get_attention_scaling_status()
@@ -193,13 +196,12 @@ class ImageGenerator:
         logging.info("Set custom resolution for model " + str(model_id))
         pipe = self.get_pipe(model_id, use_attention_scaling)
         logging.info("Copied pipe to the local context")
+
         logging.info("REDIRECTING THE PRECIOUS, STDOUT... SORRY IF THAT UPSETS YOU")
         # Redirect sys.stdout to capture tqdm output
-        original_stdout = sys.stdout
         original_stderr = sys.stderr
-        # sys.stdout = tqdm_capture
-        # sys.stderr = FilteringStderrWrapper(sys.stderr, sys.stdout)
         sys.stderr = tqdm_capture
+
         # Combine the main prompt and positive_prompt if provided
         entire_prompt = prompt
         if positive_prompt is not None:
@@ -216,11 +218,13 @@ class ImageGenerator:
                             num_inference_steps=int(float(steps)),
                             negative_prompt=negative_prompt,
                         ).images[0]
-                image = image.resize((1920, 1080))
 
                 # torch.cuda.empty_cache()
-
                 logging.info("Image generation successful!")
+                scaling_target = self.nearest_resolution(resolution, user_config)
+                if scaling_target is not resolution:
+                    logging.info("Rescaling image to nearest resolution...")
+                    image = image.resize((scaling_target["width"], scaling_target["height"]))
                 return image
             except Exception as e:
                 logging.error(
@@ -297,3 +301,48 @@ class ImageGenerator:
             if res["width"] == width and res["height"] == height:
                 return True
         return False
+    def aspect_ratio(self, resolution_item):
+        from math import gcd
+        width = resolution_item["width"]
+        height = resolution_item["height"]
+        # Calculate the greatest common divisor of width and height
+        divisor = gcd(width, height)
+
+        # Calculate the aspect ratio
+        ratio_width = width // divisor
+        ratio_height = height // divisor
+
+        # Return the aspect ratio as a string in the format "width:height"
+        return f"{ratio_width}:{ratio_height}"
+
+    def nearest_resolution(self, resolution: dict, user_config: dict):
+        # We will scale by default, to 4x the requested resolution. Big energy!
+        factor = user_config.get("resize_factor", 1)
+        logging.info("Resize configuration is set by user factoring at " + str(factor))
+        if factor == 1 or factor == 0:
+            # Do not bother rescaling if it's set to 1 or 0
+            return resolution
+        width = resolution["width"]
+        height = resolution["height"]
+        aspect_ratio = self.aspect_ratio(resolution)
+
+        new_width = int(width * factor)
+        new_height = int(height * factor)
+        new_aspect_ratio = self.aspect_ratio({"width": new_width, "height": new_height})
+        max_resolution = self.get_highest_resolution(aspect_ratio)
+        if aspect_ratio != new_aspect_ratio:
+            logging.info("Aspect ratio changed after scaling, using max resolution " + str(max_resolution) + " instead.")
+            return max_resolution
+        if not self.is_valid_resolution(new_width, new_height):
+            logging.info("Nearest resolution for AR " + str(aspect_ratio) + " not found, using max resolution: " + str(max_resolution) + " instead.")
+            return max_resolution
+    def get_highest_resolution(self, aspect_ratio: str):
+        # Calculate the aspect ratio of the input image
+        # Filter the resolutions list to only include resolutions with the same aspect ratio as the input image
+        filtered_resolutions = [r for r in self.resolutions if self.aspect_ratio(r) == aspect_ratio]
+
+        # Sort the filtered resolutions list by scaling factor in descending order
+        sorted_resolutions = sorted(filtered_resolutions, key=lambda r: r["scaling_factor"], reverse=True)
+
+        # Return the first (highest) resolution from the sorted list, or None if the list is empty
+        return sorted_resolutions[0] if sorted_resolutions else None

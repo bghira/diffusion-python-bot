@@ -20,7 +20,7 @@ class AppConfig:
                 example_config = json.load(example_file)
 
             with open(self.config_path, "w") as config_file:
-                json.dump(example_config, config_file)
+                json.dump(example_config, config_file, indent=4)
 
         with open(self.config_path, "r") as config_file:
             self.config = json.load(config_file)
@@ -46,15 +46,21 @@ class AppConfig:
         return self.config["huggingface_api"].get("api_key", None)
 
     def get_local_model_path(self):
-        return self.config["huggingface"].get("local_model_path", None)
+        return self.config["huggingface"].get("local_model_path", "/root/.cache/huggingface")
+
+    def get_imgur_config(self):
+        return self.config.get("imgur", {"client_id": None, "client_secret": None})
 
     def get_user_config(self, user_id):
         return self.config["users"].get(str(user_id), {})
-
+ 
+    def get_image_dir(self):
+        return self.config.get("image_dir", "/tmp/")
+ 
     def set_user_config(self, user_id, user_config):
         self.config["users"][str(user_id)] = user_config
         with open(self.config_path, "w") as config_file:
-            json.dump(self.config, config_file)
+            json.dump(self.config, config_file, indent=4)
 
     def set_user_setting(self, user_id, setting_key, value):
         user_id = str(user_id)
@@ -62,7 +68,7 @@ class AppConfig:
             self.config["users"][user_id] = {}
         self.config["users"][user_id][setting_key] = value
         with open(self.config_path, "w") as config_file:
-            json.dump(self.config, config_file)
+            json.dump(self.config, config_file, indent=4)
 
     def get_user_setting(self, user_id, setting_key, default_value=None):
         user_id = str(user_id)

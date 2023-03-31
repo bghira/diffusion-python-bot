@@ -6,5 +6,13 @@
   "api_key": "your_huggingface_api_key"
 },
 "default_model": "XpucT/Deliberate",
-"users": {}
+"users": {},
+"cmd_prefix": "!",
+"imgur": {
+    "client_secret": "client_secret_for_imgur_api",
+    "client_id": "client_id_for_imgur_api"
+},
+"use_attn_scaling": true,
+"maxres_width": 800,
+"maxres_height": 456,
 }

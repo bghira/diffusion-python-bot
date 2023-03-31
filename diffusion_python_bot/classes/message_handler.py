@@ -11,6 +11,7 @@ from asyncio import Queue
 from asyncio import Lock
 from .discord_log_handler import DiscordLogHandler
 from .discord_progress_bar import DiscordProgressBar
+from .image_uploader import ImageUploader
 
 class MessageHandler:
     def __init__(
@@ -19,12 +20,14 @@ class MessageHandler:
         config: AppConfig,
         shared_queue: Queue,
         shared_queue_lock: Lock,
+        image_uploader: ImageUploader
     ):
         self.image_generator = image_generator
         self.config = config
         self.bot = None  # This will be set later
         self.queue = shared_queue
         self.lock = shared_queue_lock
+        self.uploader = image_uploader
 
     def set_bot(self, bot):
         self.bot = bot
