@@ -189,17 +189,17 @@ class ImageGenerator:
                 use_attention_scaling = True
                 if steps > scaling_factor:
                     steps = scaling_factor
-        # side_x = self.config.get_max_resolution_width()
-        # side_y = self.config.get_max_resolution_height()
-        # if resolution["width"] < side_x:
-        #     side_x = resolution["width"]
-        # if resolution["height"] < side_y:
-        #     side_y = resolution["height"]
+        # Current request's aspect ratio
+        aspect_ratio = self.aspect_ratio(resolution)
+        # Get the maximum resolution for the current aspect ratio
+        side_x = self.config.get_max_resolution_width(aspect_ratio)
+        side_y = self.config.get_max_resolution_height(aspect_ratio)
+        logging.info('Aspect ratio ' + str(aspect_ratio) + ' has a maximum resolution of ' + str(side_x) + 'x' + str(side_y) + '.')
+        if resolution["width"] <= side_x and resolution["height"] <= side_y:
+            side_x = resolution["width"]
+            side_y = resolution["height"]
 
-        side_x = resolution["width"]
-        side_y = resolution["height"]
-
-        logging.info("Set custom resolution for model " + str(model_id))
+        logging.info("Retrieving pipe for model " + str(model_id))
         pipe = self.get_pipe(model_id, use_attention_scaling)
         logging.info("Copied pipe to the local context")
 
@@ -227,7 +227,7 @@ class ImageGenerator:
 
                 # torch.cuda.empty_cache()
                 logging.info("Image generation successful!")
-                scaling_target = self.nearest_resolution(resolution, user_config)
+                scaling_target = self.nearest_scaled_resolution(resolution, user_config, self.config.get_max_resolution_by_aspect_ratio(aspect_ratio))
                 if scaling_target is not resolution:
                     logging.info("Rescaling image to nearest resolution...")
                     image = image.resize((scaling_target["width"], scaling_target["height"]))
@@ -264,7 +264,7 @@ class ImageGenerator:
 
     # Helper to list / check a given resolution against the fold.
     async def list_available_resolutions(self, user_id=None, resolution=None):
-        current_resolution_indicator = " "
+        current_resolution_indicator = ""
         if resolution is not None:
             width, height = map(int, resolution.split("x"))
             if any(
@@ -285,14 +285,15 @@ class ImageGenerator:
                         user_resolution["width"] == r["width"]
                         and user_resolution["height"] == r["height"]
                     ):
-                        current_resolution_indicator = "\>"
+                        current_resolution_indicator = "**"
             resolution_list += (
                 "  "
                 + current_resolution_indicator
                 + " "
                 + f"{r['width']}x{r['height']}\n"
+                + current_resolution_indicator
             )
-            current_resolution_indicator = "  "
+            current_resolution_indicator = ""
 
         return resolution_list
 
@@ -307,7 +308,7 @@ class ImageGenerator:
             if res["width"] == width and res["height"] == height:
                 return True
         return False
-    def aspect_ratio(self, resolution_item):
+    def aspect_ratio(self, resolution_item: dict):
         from math import gcd
         width = resolution_item["width"]
         height = resolution_item["height"]
@@ -321,7 +322,7 @@ class ImageGenerator:
         # Return the aspect ratio as a string in the format "width:height"
         return f"{ratio_width}:{ratio_height}"
 
-    def nearest_resolution(self, resolution: dict, user_config: dict):
+    def nearest_scaled_resolution(self, resolution: dict, user_config: dict, max_resolution_config: dict):
         # We will scale by default, to 4x the requested resolution. Big energy!
         factor = user_config.get("resize_factor", 1)
         logging.info("Resize configuration is set by user factoring at " + str(factor))
@@ -335,20 +336,28 @@ class ImageGenerator:
         new_width = int(width * factor)
         new_height = int(height * factor)
         new_aspect_ratio = self.aspect_ratio({"width": new_width, "height": new_height})
-        max_resolution = self.get_highest_resolution(aspect_ratio)
+        max_resolution = self.get_highest_resolution(aspect_ratio, max_resolution_config)
         if aspect_ratio != new_aspect_ratio:
             logging.info("Aspect ratio changed after scaling, using max resolution " + str(max_resolution) + " instead.")
             return max_resolution
         if not self.is_valid_resolution(new_width, new_height):
             logging.info("Nearest resolution for AR " + str(aspect_ratio) + " not found, using max resolution: " + str(max_resolution) + " instead.")
             return max_resolution
-    def get_highest_resolution(self, aspect_ratio: str):
+
+    def get_highest_resolution(self, aspect_ratio: str, max_resolution_config: dict):
         # Calculate the aspect ratio of the input image
         # Filter the resolutions list to only include resolutions with the same aspect ratio as the input image
         filtered_resolutions = [r for r in self.resolutions if self.aspect_ratio(r) == aspect_ratio]
 
         # Sort the filtered resolutions list by scaling factor in descending order
         sorted_resolutions = sorted(filtered_resolutions, key=lambda r: r["scaling_factor"], reverse=False)
+
+        # Check for a maximum resolution cap in the configuration
+        max_res_cap = max_resolution_config.get(aspect_ratio)
+
+        # If there's a cap, filter the sorted resolutions list to only include resolutions below the cap
+        if max_res_cap:
+            sorted_resolutions = [r for r in sorted_resolutions if r["width"] <= max_res_cap["width"] and r["height"] <= max_res_cap["height"]]
 
         # Return the first (highest) resolution from the sorted list, or None if the list is empty
         return sorted_resolutions[0] if sorted_resolutions else None
