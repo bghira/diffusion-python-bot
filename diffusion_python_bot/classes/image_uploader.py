@@ -61,7 +61,7 @@ class ImageUploader:
         return link
 
     def filename_from_prompt(self, prompt):
-        return prompt.replace(" ", "_").replace("/", "-")[:32].lower() + ".png"
+        return prompt.replace(" ", "_").replace("/", "-").replace("'", "")[:32].lower() + ".png"
 
     def image_dir(self):
         return self.config.get_image_dir()

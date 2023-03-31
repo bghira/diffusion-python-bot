@@ -37,11 +37,11 @@ class ImageGenerator:
         {"width": 1920, "height": 1200, "scaling_factor": 30},
         {"width": 3840, "height": 2160, "scaling_factor": 30},
         {"width": 7680, "height": 4320, "scaling_factor": 30},
-        {"width": 64, "height": 96, "scaling_factor": 1},
-        {"width": 128, "height": 192, "scaling_factor": 2},
-        {"width": 256, "height": 384, "scaling_factor": 4},
-        {"width": 512, "height": 768, "scaling_factor": 8},
-        {"width": 1024, "height": 1536, "scaling_factor": 16},
+        {"width": 64, "height": 96, "scaling_factor": 100},
+        {"width": 128, "height": 192, "scaling_factor": 80},
+        {"width": 256, "height": 384, "scaling_factor": 60},
+        {"width": 512, "height": 768, "scaling_factor": 49},
+        {"width": 1024, "height": 1536, "scaling_factor": 30},
     ]
 
     def __init__(
@@ -52,6 +52,7 @@ class ImageGenerator:
         self.lock = shared_queue_lock
         self.config = AppConfig()
         self.model = None
+        self.model_scaling = False
         self.pipe = None
 
     def get_variation_pipe(self, model_id, use_attention_scaling=False):
@@ -79,7 +80,7 @@ class ImageGenerator:
     def get_pipe(self, model_id, use_attention_scaling=False):
         import gc
         gc.collect()
-        if self.pipe is not None and self.model_id == model_id:
+        if self.pipe is not None and self.model_id == model_id and self.model_scaling == use_attention_scaling:
             # Return the current pipe if we're using the same model.
             return self.pipe
         if self.pipe is not None:
@@ -87,6 +88,7 @@ class ImageGenerator:
         # Create a new pipe and clean the cache.
         logging.info("Clearing the CUDA cache...")
         self.model_id = model_id
+        self.model_scaling = use_attention_scaling
         torch.cuda.empty_cache()
         logging.info("Generating a new pipe...")
         if use_attention_scaling is False:
@@ -187,12 +189,16 @@ class ImageGenerator:
                 use_attention_scaling = True
                 if steps > scaling_factor:
                     steps = scaling_factor
-        side_x = self.config.get_max_resolution_width()
-        side_y = self.config.get_max_resolution_height()
-        if resolution["width"] < side_x:
-            side_x = resolution["width"]
-        if resolution["height"] < side_y:
-            side_y = resolution["height"]
+        # side_x = self.config.get_max_resolution_width()
+        # side_y = self.config.get_max_resolution_height()
+        # if resolution["width"] < side_x:
+        #     side_x = resolution["width"]
+        # if resolution["height"] < side_y:
+        #     side_y = resolution["height"]
+
+        side_x = resolution["width"]
+        side_y = resolution["height"]
+
         logging.info("Set custom resolution for model " + str(model_id))
         pipe = self.get_pipe(model_id, use_attention_scaling)
         logging.info("Copied pipe to the local context")
@@ -342,7 +348,7 @@ class ImageGenerator:
         filtered_resolutions = [r for r in self.resolutions if self.aspect_ratio(r) == aspect_ratio]
 
         # Sort the filtered resolutions list by scaling factor in descending order
-        sorted_resolutions = sorted(filtered_resolutions, key=lambda r: r["scaling_factor"], reverse=True)
+        sorted_resolutions = sorted(filtered_resolutions, key=lambda r: r["scaling_factor"], reverse=False)
 
         # Return the first (highest) resolution from the sorted list, or None if the list is empty
         return sorted_resolutions[0] if sorted_resolutions else None
