@@ -19,6 +19,8 @@ import traceback
 
 class ImageGenerator:
     resolutions = [
+        {"width": 512, "height": 512, "scaling_factor": 30},
+        {"width": 768, "height": 768, "scaling_factor": 30},
         {"width": 128, "height": 96, "scaling_factor": 100},
         {"width": 192, "height": 128, "scaling_factor": 94},
         {"width": 256, "height": 192, "scaling_factor": 88},
@@ -30,9 +32,15 @@ class ImageGenerator:
         {"width": 1152, "height": 648, "scaling_factor": 34},
         {"width": 1280, "height": 720, "scaling_factor": 30},
         {"width": 1920, "height": 1080, "scaling_factor": 30},
+        {"width": 1920, "height": 1200, "scaling_factor": 30},
         {"width": 3840, "height": 2160, "scaling_factor": 30},
-        {"width": 7680, "height": 4320, "scaling_factor": 30}
-        # Add more resolutions if needed
+        {"width": 7680, "height": 4320, "scaling_factor": 30},
+        {"width": 64, "height": 96, "scaling_factor": 1},
+        {"width": 128, "height": 192, "scaling_factor": 2},
+        {"width": 256, "height": 384, "scaling_factor": 4},
+        {"width": 512, "height": 768, "scaling_factor": 8},
+        {"width": 1024, "height": 1536, "scaling_factor": 16},
+        {"width": 1920, "height": 1200, "scaling_factor": 30}
     ]
 
     def __init__(
