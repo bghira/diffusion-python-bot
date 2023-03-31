@@ -262,9 +262,7 @@ class ImageGenerator:
 
         return local_models
 
-    # Helper to list / check a given resolution against the fold.
     async def list_available_resolutions(self, user_id=None, resolution=None):
-        current_resolution_indicator = ""
         if resolution is not None:
             width, height = map(int, resolution.split("x"))
             if any(
@@ -274,28 +272,65 @@ class ImageGenerator:
             else:
                 return False
 
-        resolution_list = ""
-        for r in self.resolutions:
-            if user_id is not None:
-                user_resolution = self.config.get_user_setting(
-                    user_id, "resolution", {"width": 800, "height": 456}
-                )
-                if user_resolution is not None:
-                    if (
-                        user_resolution["width"] == r["width"]
-                        and user_resolution["height"] == r["height"]
-                    ):
-                        current_resolution_indicator = "**"
-            resolution_list += (
-                "  "
-                + current_resolution_indicator
-                + " "
-                + f"{r['width']}x{r['height']}\n"
-                + current_resolution_indicator
-            )
-            current_resolution_indicator = ""
+        indicator = "**"  # Indicator variable
+        indicator_length = len(indicator)
 
-        return resolution_list
+        # Group resolutions by aspect ratio
+        grouped_resolutions = {}
+        for r in self.resolutions:
+            ar = self.aspect_ratio(r)
+            if ar not in grouped_resolutions:
+                grouped_resolutions[ar] = []
+            grouped_resolutions[ar].append(r)
+
+        # Sort resolution groups by width and height
+        for ar, resolutions in grouped_resolutions.items():
+            grouped_resolutions[ar] = sorted(resolutions, key=lambda r: (r["width"], r["height"]))
+
+        # Calculate the maximum number of rows for the table
+        max_rows = max(len(resolutions) for resolutions in grouped_resolutions.values())
+
+        # Calculate the maximum field text width for each column, including the indicator
+        max_field_widths = {}
+        for ar, resolutions in grouped_resolutions.items():
+            max_field_widths[ar] = max(len(f"{r['width']}x{r['height']}") + 2 * indicator_length for r in resolutions)
+
+        # Generate resolution list in Markdown columns with padding
+        header_row = "| " + " | ".join(ar.ljust(max_field_widths[ar]) for ar in grouped_resolutions.keys()) + " |\n"
+        
+        # Update the separator_row generation
+        separator_row = "+-" + "-+-".join("-" * (max_field_widths[ar] - 1) for ar in grouped_resolutions.keys()) + "-+\n"
+        
+        resolution_list = header_row + separator_row
+
+        for i in range(max_rows):
+            row_text = "| "
+            for ar, resolutions in grouped_resolutions.items():
+                if i < len(resolutions):
+                    r = resolutions[i]
+                    current_resolution_indicator = ""
+                    if user_id is not None:
+                        user_resolution = self.config.get_user_setting(
+                            user_id, "resolution", {"width": 800, "height": 456}
+                        )
+                        if user_resolution is not None:
+                            if (
+                                user_resolution["width"] == r["width"]
+                                and user_resolution["height"] == r["height"]
+                            ):
+                                current_resolution_indicator = indicator
+                    res_str = (
+                        current_resolution_indicator
+                        + f"{r['width']}x{r['height']}"
+                        + current_resolution_indicator
+                    )
+                    row_text += res_str.ljust(max_field_widths[ar]) + " | "
+                else:
+                    row_text += " ".ljust(max_field_widths[ar]) + " | "
+            resolution_list += row_text + "\n"
+
+        # Wrap the output in triple backticks for fixed-width formatting in Discord
+        return f"```\n{resolution_list}\n```"
 
     def get_scaling_factor(self, width, height, scaled_resolutions):
         for res in scaled_resolutions:
