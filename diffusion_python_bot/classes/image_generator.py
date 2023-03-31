@@ -40,7 +40,6 @@ class ImageGenerator:
         {"width": 256, "height": 384, "scaling_factor": 4},
         {"width": 512, "height": 768, "scaling_factor": 8},
         {"width": 1024, "height": 1536, "scaling_factor": 16},
-        {"width": 1920, "height": 1200, "scaling_factor": 30}
     ]
 
     def __init__(
