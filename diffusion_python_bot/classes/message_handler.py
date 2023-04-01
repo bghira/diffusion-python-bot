@@ -2,16 +2,16 @@ import discord
 import traceback
 import sys
 from io import BytesIO
-from .image_generator import ImageGenerator
-from .app_config import AppConfig
-from .tqdm_capture import TqdmCapture
+from diffusion_python_bot.classes.image_generator import ImageGenerator
+from diffusion_python_bot.classes.app_config import AppConfig
+from diffusion_python_bot.classes.tqdm_capture import TqdmCapture
 import logging
 from PIL import Image
 from asyncio import Queue
 from asyncio import Lock
-from .discord_log_handler import DiscordLogHandler
-from .discord_progress_bar import DiscordProgressBar
-from .image_uploader import ImageUploader
+from diffusion_python_bot.classes.discord_log_handler import DiscordLogHandler
+from diffusion_python_bot.classes.discord_progress_bar import DiscordProgressBar
+from diffusion_python_bot.classes.image_uploader import ImageUploader
 
 class MessageHandler:
     def __init__(
