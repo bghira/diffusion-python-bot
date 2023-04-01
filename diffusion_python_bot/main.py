@@ -1,17 +1,22 @@
-import os
+import sys
 import datetime
 import discord
+from discord import Thread
 import asyncio
-from asyncio import Lock
+from asyncio import ( Lock, Queue, Semaphore )
 import traceback
 from discord.ext import commands
 from PIL import Image
 from io import BytesIO
-from diffusion_python_bot.classes.app_config import AppConfig
-from diffusion_python_bot.classes.image_generator import ImageGenerator
-from diffusion_python_bot.classes.message_handler import MessageHandler
-from diffusion_python_bot.user_commands import UserCommands
-from diffusion_python_bot.utils import _get_project_meta
+from classes.app_config import AppConfig
+from classes.image_generator import ImageGenerator
+from classes.message_handler import MessageHandler
+from user_commands import UserCommands
+from utils import _get_project_meta
+from classes.discord_progress_bar import DiscordProgressBar
+from classes.tqdm_capture import TqdmCapture
+from classes.image_uploader import ImageUploader
+import logging
 
 pkg_meta = _get_project_meta()
 pkg_name = str(pkg_meta["name"])
@@ -19,33 +24,54 @@ pkg_name = str(pkg_meta["name"])
 pkg_version = str(pkg_meta["version"])
 
 config = AppConfig()
+# How many concurrent slots to run when generating images.
+concurrent_slots = config.get_concurrent_slots()
 TOKEN = config.get_discord_api_key()
-
-# Threaded conversation handling
-image_queue = asyncio.Queue()
-appconfig_lock = asyncio.Lock()
-image_queue_lock = Lock()
+PREFIX = config.get_command_prefix()
 
 intents = discord.Intents.default()
 intents.typing = False
 intents.presences = False
+intents.message_content = True
 
-bot = commands.Bot(command_prefix="!", intents=intents)
-bot.add_cog(UserCommands(bot, appconfig_lock, config))
+from classes.discord_wrapper import DiscordWrapper
+bot = DiscordWrapper(command_prefix=PREFIX, intents=intents)
+
+# Configure the root logger to equate Discord's logging settings.
+discord_logger = logging.getLogger('discord')
+# Add a file handler to log to a file
+file_handler = logging.FileHandler(filename='main.log', encoding='utf-8', mode='w')
+file_handler.setFormatter(logging.Formatter('%(asctime)s:%(levelname)s:%(name)s: %(message)s'))
+discord_logger.addHandler(file_handler)
+logging.getLogger().setLevel(logging.DEBUG)
+logging.getLogger().handlers = discord_logger.handlers
+
+logging.basicConfig(level=logging.INFO)
+
+# Threaded conversation handling
+image_queue = Queue()
+appconfig_lock = Lock()
+image_queue_lock = Lock()
+image_generation_semaphore = Semaphore(1)
+image_uploader = ImageUploader(config)
+asyncio.run(image_uploader.set_bot(bot))
+asyncio.run(image_uploader.authorize())
+asyncio.run(bot.add_cog(UserCommands(bot, appconfig_lock, config)))
 image_generator = ImageGenerator(image_queue_lock)
 message_handler = MessageHandler(
     image_generator=image_generator,
     config=config,
     shared_queue=image_queue,
     shared_queue_lock=image_queue_lock,
+    image_uploader=image_uploader
 )
 message_handler.set_bot(bot)
 
 
 @bot.event
 async def on_ready():
-    print(f"{bot.user} has connected to Discord!")
-    print(f"Server(s) connected: {[guild.name for guild in bot.guilds]}")
+    logging.info(f"{bot.user} has connected to Discord!")
+    logging.info(f"Server(s) connected: {[guild.name for guild in bot.guilds]}")
 
 
 async def send_large_message(ctx, text, max_chars=2000):
@@ -60,7 +86,7 @@ async def send_large_message(ctx, text, max_chars=2000):
         if len(buffer) + len(line) + 1 > max_chars:
             if not first_message:
                 first_message = await ctx.send(buffer)
-                thread = await first_message.create_thread(name="Model List")
+                thread = await first_message.channel.create_thread(name="Model List")
             else:
                 await thread.send_message(buffer)
             buffer = ""
@@ -75,32 +101,20 @@ async def ping(ctx):
     await ctx.send("Pong!")
 
 
-@bot.command(name="generate", help="Generates an image based on the given prompt.")
-async def generate_image(ctx, *, prompt):
-    try:
-        await ctx.send(f"Adding prompt to queue for processing: " + prompt)
-        # Put the context and prompt in a tuple before adding it to the queue
-        await image_queue.put((ctx, prompt))
-        # Run the generate_image_from_queue function as a task, if not already running
-        if (
-            not hasattr(bot, "image_generation_task")
-            or bot.image_generation_task.done()
-        ):
-            bot.image_generation_task = bot.loop.create_task(
-                generate_image_from_queue()
-            )
-    except Exception as e:
-        await ctx.send(
-            f"Error generating image: {e}\n\nStack trace:\n{traceback.format_exc()}"
-        )
-
-
-# New function to process the prompts in the queue and generate images one at a time
 async def generate_image_from_queue():
     while not image_queue.empty():
-        ctx, prompt = await image_queue.get()
-        await ctx.send("Begin processing queue item: " + prompt)
+        ctx, prompt, discord_first_message = await image_queue.get()
+        logging.info("Create progress bar using {discord_first_message}...")
+        await discord_first_message.edit(content="Begin processing queue item: " + prompt)
+        progress_bar = DiscordProgressBar(ctx=ctx, total_steps=100, original_stdout=sys.stdout, progress_message=discord_first_message)
+        tqdm_file = TqdmCapture(progress_bar, bot.loop, sys.stdout, sys.stderr)
+        logging.info("Editing initial message.")
+        await discord_first_message.edit(content="Begin image generation: " + prompt)
         user_id = ctx.author.id
+        try:
+            await ctx.message.delete()
+        except:
+            logging.info("Message was already deleted. Dang.")
         async with appconfig_lock:
             user_config = config.get_user_config(user_id)
             steps = config.get_user_setting(user_id, "steps", 50)
@@ -115,27 +129,29 @@ async def generate_image_from_queue():
             resolution = config.get_user_setting(
                 user_id, "resolution", {"width": 800, "height": 456}
             )
-            model_id = user_config.get("model", None)
+            model_id = user_config.get("model", "andite/anything-v4.0")
         try:
             # Run the image generation in an executor
-            await ctx.send("Begin image generation: " + prompt)
-            async with image_queue_lock:
-                image = await bot.loop.run_in_executor(
-                    None,
-                    image_generator.generate_image,
-                    prompt,
-                    model_id,
-                    resolution,
-                    negative_prompt,
-                    steps,
-                    positive_prompt,
-                )
-            await ctx.send("Begin image processing: " + prompt)
-            buffer = BytesIO()
-            image.save(buffer, "PNG")
-            buffer.seek(0)
+            # Acquire the semaphore
+            # await image_generation_semaphore.acquire()
+            logging.info("Begin capture...")
+            image = await bot.loop.run_in_executor(
+                None,
+                image_generator.generate_image,
+                prompt,
+                model_id,
+                resolution,
+                negative_prompt,
+                steps,
+                positive_prompt,
+                tqdm_file,
+                user_config
+            )
+
             message = (
-                "**Prompt:** "
+                "**Requested by:** "
+                + str(ctx.author.mention)
+                + "\n**Prompt:** "
                 + str(prompt)
                 + "\n**Model:** "
                 + str(model_id)
@@ -146,9 +162,18 @@ async def generate_image_from_queue():
                 + "\n**Steps:** "
                 + str(steps)
             )
-            await ctx.send(
-                content=message, file=discord.File(buffer, "generated_image.png")
+            if isinstance(ctx.message.channel, Thread):
+                thread = ctx.message.channel
+            else:
+                await discord_first_message.edit(content="Prompt by **" + ctx.author.name + "**: `" + prompt + "`")
+                thread = await discord_first_message.create_thread(name=prompt[:97] + '...', auto_archive_duration=60) # You can change the duration (in minutes) as needed
+            image_url = await image_uploader.put_from_pil(image, prompt)
+            await thread.send(
+                content=message + '\n' + str(image_url)
             )
+            await discord_first_message.delete()
+        except discord.NotFound:
+            logging.info("Discord message was already deleted, probably.")
         except Exception as e:
             error_message = (
                 f"Error generating image: {e}\n\nStack trace:\n{traceback.format_exc()}"
@@ -156,7 +181,35 @@ async def generate_image_from_queue():
             await send_large_message(ctx, f"Error generating image: {error_message}")
         finally:
             image_queue.task_done()
+            image_generation_semaphore.release()
 
+@bot.command(name="generate", help="Generates an image based on the given prompt.")
+async def generate(ctx, *, prompt):
+    try:
+        print("Begin generate command coroutine.")
+        discord_first_message = await ctx.send(f"Adding prompt to queue for processing: " + prompt)
+        # Put the context and prompt in a tuple before adding it to the queue
+        await image_queue.put((ctx, prompt, discord_first_message))
+
+        # Get the number of concurrent slots
+        concurrent_slots = config.get_concurrent_slots()
+
+        # Check if there are any running tasks
+        if not hasattr(bot, "image_generation_tasks"):
+            bot.image_generation_tasks = []
+
+        # Remove any completed tasks
+        bot.image_generation_tasks = [t for t in bot.image_generation_tasks if not t.done()]
+
+        # If there are fewer tasks than allowed slots, create new tasks
+        while len(bot.image_generation_tasks) < concurrent_slots:
+            task = bot.loop.create_task(generate_image_from_queue())
+            bot.image_generation_tasks.append(task)
+
+    except Exception as e:
+        await ctx.send(
+            f"Error generating image: {e}\n\nStack trace:\n{traceback.format_exc()}"
+        )
 
 # Set model command with AppConfig lock
 @bot.command(name="setmodel", help="Set the default model for the user.")
@@ -204,7 +257,7 @@ async def set_resolution(ctx, resolution=None):
     user_id = ctx.author.id
     async with appconfig_lock:
         user_config = config.get_user_config(user_id)
-        available_resolutions = await image_generator.list_available_resolutions()
+        available_resolutions = await image_generator.list_available_resolutions(user_id=user_id)
         if resolution is None:
             resolution = user_config.get("resolution", {"width": 800, "height": 456})
             await ctx.send(
@@ -230,6 +283,23 @@ async def set_resolution(ctx, resolution=None):
             f"Default resolution set to {width}x{height} for user {ctx.author.name}."
         )
 
+@bot.command(
+    name="resize",
+    help="Set or get your default resize for generated images.\nDefault is **1** (no resizing) and max is **3**."
+)
+async def set_resize(ctx, resize:int = None):
+    user_id = ctx.author.id
+    async with appconfig_lock:
+        user_config = config.get_user_config(user_id)
+        if resize > 3:
+            resize_factor = user_config.get("resize_factor", 1)
+            await ctx.send(f'Your current resize factor is set to {resize_factor}.\nThe maximum is 3; {resize} is too high.\n')
+            return
+        user_config["resize_factor"] = int(resize)
+        config.set_user_config(user_id, user_config)
+        await ctx.send(
+            f"{ctx.author.mention}: Your resize factor is now set to {resize}."
+        )
 
 @bot.command(name="listmodels", help="Lists the available models from Hugging Face.")
 async def list_models(ctx):
@@ -353,15 +423,6 @@ async def remove_item_from_queue(queue, index):
 
     return new_queue, removed_item
 
-
-async def generate_variants(image_generator, input_image):
-    prompt = "a variation of the input image"
-    generated_image = image_generator.generate_image(
-        prompt, model_id="lambdalabs/sd-image-variations-diffusers", steps=25
-    )
-    return [generated_image]
-
-
 @bot.event
 async def on_message(message):
     # If the message is from the bot itself, ignore it
@@ -372,8 +433,8 @@ async def on_message(message):
 
 def main():
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    print(f"[{timestamp}] bot version {pkg_version}...")
-    print(f"[{timestamp}] Starting bot...")
+    logging.info(f"[{timestamp}] bot version {pkg_version}...")
+    logging.info(f"[{timestamp}] Starting bot...")
     bot.run(TOKEN)
 
 

@@ -9,3 +9,4 @@ torchvision
 torchaudio
 huggingface_hub
 tensorrt
+imgur-python
