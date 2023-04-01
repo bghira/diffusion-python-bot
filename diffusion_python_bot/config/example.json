@@ -1,18 +1,26 @@
 {
-"discord_api": {
-  "api_key": "your_discord_api_key_here"
-},
-"huggingface_api": {
-  "api_key": "your_huggingface_api_key"
-},
-"default_model": "XpucT/Deliberate",
-"users": {},
-"cmd_prefix": "!",
-"imgur": {
-    "client_secret": "client_secret_for_imgur_api",
-    "client_id": "client_id_for_imgur_api"
-},
-"use_attn_scaling": true,
-"maxres_width": 800,
-"maxres_height": 456,
+  "cmd_prefix": "!",
+  "imgur": {
+      "access_token": "your_imgur_access_token",
+      "expires_in": 1234567,
+      "token_type": "bearer",
+      "refresh_token": "your_refresh_token_goes_here",
+      "account_username": "something_nice",
+      "client_id": 1234
+  },
+  "use_attn_scaling": true,
+  "maxres_width": 1280,
+  "maxres_height": 1536,
+  "discord_api": {
+      "api_key": "your_bot_token"
+  },
+  "huggingface_api": {
+      "api_key": "your_huggingface_token"
+  },
+  "default_model": "XpucT/Deliberate",
+  "huggingface": {
+      "local_model_path": "/path/to/.cache/huggingface/hub"
+  },
+  "users": {
+  }
 }
