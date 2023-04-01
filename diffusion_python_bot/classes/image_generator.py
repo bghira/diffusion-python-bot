@@ -360,7 +360,7 @@ class ImageGenerator:
     def nearest_scaled_resolution(self, resolution: dict, user_config: dict, max_resolution_config: dict):
         # We will scale by default, to 4x the requested resolution. Big energy!
         factor = user_config.get("resize_factor", 1)
-        logging.info("Resize configuration is set by user factoring at " + str(factor))
+        logging.info("Resize configuration is set by user factoring at " + str(factor) + " based on our max resolution config, " + str(max_resolution_config) + ".")
         if factor == 1 or factor == 0:
             # Do not bother rescaling if it's set to 1 or 0
             return resolution
@@ -375,9 +375,13 @@ class ImageGenerator:
         if aspect_ratio != new_aspect_ratio:
             logging.info("Aspect ratio changed after scaling, using max resolution " + str(max_resolution) + " instead.")
             return max_resolution
-        if not self.is_valid_resolution(new_width, new_height):
-            logging.info("Nearest resolution for AR " + str(aspect_ratio) + " not found, using max resolution: " + str(max_resolution) + " instead.")
-            return max_resolution
+        else:
+            if self.is_valid_resolution(new_width, new_height):
+                logging.info("Nearest resolution for AR " + str(aspect_ratio) + " is " + str(new_width) + "x" + str(new_height) + ".")
+                return {"width": new_width, "height": new_height}
+            else:
+                logging.info("Nearest resolution for AR " + str(aspect_ratio) + " not found, using max resolution: " + str(max_resolution) + " instead.")
+                return max_resolution
 
     def get_highest_resolution(self, aspect_ratio: str, max_resolution_config: dict):
         # Calculate the aspect ratio of the input image

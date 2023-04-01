@@ -1,26 +1,53 @@
 {
-  "cmd_prefix": "!",
-  "imgur": {
-      "access_token": "your_imgur_access_token",
-      "expires_in": 1234567,
-      "token_type": "bearer",
-      "refresh_token": "your_refresh_token_goes_here",
-      "account_username": "something_nice",
-      "client_id": 1234
-  },
-  "use_attn_scaling": true,
-  "maxres_width": 1280,
-  "maxres_height": 1536,
-  "discord_api": {
-      "api_key": "your_bot_token"
-  },
-  "huggingface_api": {
-      "api_key": "your_huggingface_token"
-  },
-  "default_model": "XpucT/Deliberate",
-  "huggingface": {
-      "local_model_path": "/path/to/.cache/huggingface/hub"
-  },
-  "users": {
-  }
+    "cmd_prefix": "!",
+    "imgur": {
+        "access_token": "your_imgur_access_token",
+        "expires_in": 1234567,
+        "token_type": "bearer",
+        "refresh_token": "your_refresh_token_goes_here",
+        "account_username": "something_nice",
+        "client_id": 1234
+    },
+    "use_attn_scaling": true,
+    "discord_api": {
+        "api_key": "your_bot_token"
+    },
+    "huggingface_api": {
+        "api_key": "your_huggingface_token"
+    },
+    "default_model": "XpucT/Deliberate",
+    "huggingface": {
+        "local_model_path": "/path/to/.cache/huggingface/hub"
+    },
+    "users": {},
+    "maxres": {
+        "1:1": {
+            "width": 768,
+            "height": 768
+        },
+        "4:3": {
+            "width": 512,
+            "height": 384
+        },
+        "3:2": {
+            "width": 768,
+            "height": 512
+        },
+        "100:57": {
+            "width": 800,
+            "height": 456
+        },
+        "16:9": {
+            "width": 7680,
+            "height": 4320
+        },
+        "8:5": {
+            "width": 1920,
+            "height": 1200
+        },
+        "2:3": {
+            "width": 1024,
+            "height": 1536
+        }
+    }
 }
