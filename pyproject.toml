@@ -9,7 +9,7 @@ packages = [{include = "diffusion_python_bot"}]
 bot = "diffusion_python_bot.main:main"
 
 [tool.poetry.dependencies]
-python = ">=3.10,<3.12"
+python = ">=3.9,<3.12"
 tensorflow-io-gcs-filesystem = "0.31.0"
 absl-py = "1.4.0"
 accelerate = "0.18.0"
