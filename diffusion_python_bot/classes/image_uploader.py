@@ -1,6 +1,6 @@
 import os
 from imgur_python import Imgur
-from .app_config import AppConfig
+from diffusion_python_bot.classes.app_config import AppConfig
 import base64
 import logging
 from PIL import Image
